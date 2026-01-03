@@ -2,6 +2,38 @@ const play = require('play-dl');
 const { logger } = require('../utils/logger');
 
 /**
+ * Initialize YouTube with cookies if available
+ * This helps avoid "Invalid URL" errors from YouTube blocking requests
+ */
+async function initialize() {
+  try {
+    // Check if YouTube cookies are configured
+    if (process.env.YOUTUBE_COOKIE) {
+      logger.info('YouTube', 'Setting up YouTube cookies...');
+      await play.setToken({
+        youtube: {
+          cookie: process.env.YOUTUBE_COOKIE
+        }
+      });
+      logger.success('YouTube', 'Cookies configured');
+    } else {
+      logger.warn('YouTube', 'No YouTube cookies configured - some videos may fail to play');
+      logger.info('YouTube', 'To fix: Add YOUTUBE_COOKIE to your .env file');
+      logger.info('YouTube', 'Get cookies from browser: https://github.com/AuReMe/cookie-notice-blocker/wiki/How-to-export-cookies-from-your-browser');
+    }
+    
+    // Refresh YouTube token
+    if (play.is_expired()) {
+      logger.info('YouTube', 'Refreshing YouTube token...');
+      await play.refreshToken();
+      logger.success('YouTube', 'Token refreshed');
+    }
+  } catch (err) {
+    logger.error('YouTube', 'Failed to initialize YouTube', err);
+  }
+}
+
+/**
  * Check if URL is any valid YouTube URL (video or playlist)
  * @param {string} url
  * @returns {boolean}
@@ -236,24 +268,57 @@ async function getStreamWithType(url, seekTime = 0) {
   logger.debug('YouTube', `getStreamWithType: normalized="${normalizedUrl}", seekTime=${seekTime}`);
   
   try {
-    // Only pass options if we need to seek, some versions of play-dl don't like empty options
-    const streamData = seekTime > 0 
-      ? await play.stream(normalizedUrl, { seek: seekTime })
-      : await play.stream(normalizedUrl);
+    // Method 1: Try using video_info + stream_from_info (more reliable)
+    logger.debug('YouTube', 'Attempting stream via video_info...');
+    const info = await play.video_info(normalizedUrl);
     
-    logger.stream('youtube', normalizedUrl, `success (type: ${streamData.type})`);
+    if (!info || !info.video_details) {
+      throw new Error('Failed to get video info');
+    }
+    
+    logger.debug('YouTube', `Got video info: "${info.video_details.title}"`);
+    
+    const options = seekTime > 0 ? { seek: seekTime } : undefined;
+    const streamData = await play.stream_from_info(info, options);
+    
+    logger.stream('youtube', normalizedUrl, `success via video_info (type: ${streamData.type})`);
     
     return {
       stream: streamData.stream,
       type: streamData.type
     };
   } catch (err) {
-    logger.error('YouTube', `Stream creation failed for: ${normalizedUrl}`, err);
-    throw err;
+    logger.warn('YouTube', `video_info method failed: ${err.message}`);
+    
+    // Method 2: Fallback to direct stream (original method)
+    try {
+      logger.debug('YouTube', 'Attempting direct stream fallback...');
+      const streamData = seekTime > 0 
+        ? await play.stream(normalizedUrl, { seek: seekTime })
+        : await play.stream(normalizedUrl);
+      
+      logger.stream('youtube', normalizedUrl, `success via direct stream (type: ${streamData.type})`);
+      
+      return {
+        stream: streamData.stream,
+        type: streamData.type
+      };
+    } catch (fallbackErr) {
+      logger.error('YouTube', `All streaming methods failed for: ${normalizedUrl}`, fallbackErr);
+      
+      // Provide helpful error message
+      if (fallbackErr.message.includes('Invalid URL') || err.message.includes('Invalid URL')) {
+        logger.error('YouTube', 'This error usually means YouTube is blocking requests.');
+        logger.error('YouTube', 'Solution: Add YouTube cookies to your .env file as YOUTUBE_COOKIE');
+      }
+      
+      throw fallbackErr;
+    }
   }
 }
 
 module.exports = {
+  initialize,
   isYouTubeUrl,
   isVideoUrl,
   isPlaylistUrl,

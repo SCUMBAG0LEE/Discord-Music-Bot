@@ -6,6 +6,7 @@ const { logger } = require('./utils/logger');
 
 // Services
 const spotifyService = require('./services/spotify');
+const youtubeService = require('./services/youtube');
 
 // Initialize Discord client with required intents
 const client = new Client({
@@ -139,6 +140,10 @@ async function start() {
   logger.info('Bot', 'Loading commands...');
   loadCommands();
   logger.success('Bot', `Loaded ${client.commands.size} commands`);
+  
+  // Initialize YouTube
+  logger.info('Bot', 'Initializing YouTube...');
+  await youtubeService.initialize();
   
   // Initialize Spotify
   logger.info('Bot', 'Initializing Spotify...');
