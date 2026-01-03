@@ -1,271 +1,192 @@
-# 🎵 Discord Music Bot
+# Discord Music Bot - Python + Lavalink
 
-A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio** support, built with discord.js v14 and [DisTube](https://distube.js.org/).
+A high-performance Discord music bot built with Python, wavelink, and Lavalink v4.
 
-## ✨ Features
+## Features
 
-### 🎶 Multi-Platform Support
-- **YouTube** — Songs, playlists, and interactive search
-- **Spotify** — Tracks, playlists, and albums (auto-converts to YouTube)
-- **SoundCloud** — Tracks and playlists
-- **Radio/Streams** — Built-in presets and custom stream URLs
+- 🎵 **Multi-source support**: YouTube, Spotify, SoundCloud, and 900+ sites via Lavalink
+- ⚡ **High performance**: Audio processing offloaded to Lavalink server
+- 🎛️ **Audio filters**: Bass boost, nightcore, 8D audio, equalizer presets, and more
+- 📋 **Queue management**: Shuffle, clear, move, jump, loop modes
+- 💾 **Personal playlists**: Save and load your favorite queues
+- 🗳️ **Vote skip**: Democratic skipping system
+- 📻 **Autoplay**: Automatically queue related songs
 
-### 📋 Queue Management
-- Paginated queue display
-- Shuffle, move, remove, and jump
-- **Loop Mode** — Off, repeat song, or repeat queue
-- **Autoplay** — Automatically queue related songs when queue ends
-
-### 💾 Saved Playlists
-- Save current queue as a reusable playlist
-- Load, append, and delete your playlists
-- Server-specific playlist storage
-
-### ⏯️ Advanced Playback
-- **Seek** — Jump to any timestamp in a song
-- **Replay** — Restart the current song instantly
-- **Previous** — Play the previous song
-- **24/7 Mode** — Keep the bot in voice channel indefinitely
-- **Volume Control** — 0-200% range
-- **Vote Skip** — Democratic skipping
-- **Audio Filters** — Bass boost, nightcore, vaporwave, and more
-
-### 🎛️ Rich Now Playing
-- Progress bar with elapsed/total time
-- Requester and platform info
-- Loop and autoplay status indicators
-
-## 📁 Project Structure
+## Architecture
 
 ```
-src/
-├── index.js                 # Entry point & command loader
-├── commands/
-│   ├── play.js              # /play - Multi-platform playback
-│   ├── search.js            # /search - Interactive YouTube search
-│   ├── queue.js             # /queue - Paginated queue display
-│   ├── playback.js          # /pause, /resume, /stop, /volume, /loop, /skip, /voteskip, /np, /previous, /filters
-│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump, /skipto
-│   ├── playlists.js         # /savelist, /loadlist, /deletelist, /playlists, /appendlist
-│   ├── advanced.js          # /seek, /replay, /nowplaying, /autoplay, /247, /radio
-│   └── utility.js           # /help, /refreshcommands
-├── services/
-│   ├── distube.js           # DisTube initialization & event handling
-│   └── playlists.js         # File-based playlist storage
-└── utils/
-    ├── formatters.js        # Duration formatting utilities
-    └── permissions.js       # DJ/owner permission checks
+┌─────────────────┐     ┌─────────────────┐
+│  Discord Bot    │────▶│   Lavalink      │
+│  (Python)       │◀────│   (Java)        │
+│  - Commands     │     │  - Audio decode │
+│  - Queue logic  │     │  - Streaming    │
+│  - User input   │     │  - Filters      │
+└─────────────────┘     └─────────────────┘
+        │                       │
+        ▼                       ▼
+   Discord API            YouTube/Spotify/etc
 ```
 
-## 🚀 Quick Start
+## Requirements
 
-### Prerequisites
+- Python 3.10+
+- Java 17+ (for Lavalink)
+- A Discord Bot Token
 
-- **Node.js 18+** — Required for YouTube.js and DisTube
-- **FFmpeg** — Required for audio processing
-  ```bash
-  # Ubuntu/Debian
-  sudo apt install ffmpeg
-  
-  # Windows (via chocolatey)
-  choco install ffmpeg
-  ```
+## Setup
 
-### Installation
+### Quick Start (Windows)
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/SCUMBAG0LEE/DiscordMusicBot.git
-   cd DiscordMusicBot
-   ```
+```batch
+# 1. Download Lavalink
+python scripts/download_lavalink.py
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+# 2. Configure .env
+copy .env.example .env
+# Edit .env with your BOT_TOKEN
 
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your tokens
-   ```
+# 3. Start Lavalink (in one terminal)
+start_lavalink.bat
 
-4. **Run the bot**
-   ```bash
-   npm start
-   ```
+# 4. Start Bot (in another terminal)
+start_bot.bat
+```
 
-## ⚙️ Configuration
+### Manual Setup
 
-Copy `.env.example` to `.env` and fill in your credentials:
+#### 1. Install Lavalink
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BOT_TOKEN` | ✅ | Discord bot token from [Developer Portal](https://discord.com/developers/applications) |
-| `BOT_OWNER_ID` | ✅ | Your Discord user ID (for owner-only commands) |
-| `DJ_ROLE_ID` | ❌ | Role ID that can force-skip songs |
-| `SPOTIFY_CLIENT_ID` | ⚠️ | From [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
-| `SPOTIFY_CLIENT_SECRET` | ⚠️ | From Spotify Developer Dashboard |
+Download Lavalink.jar from [GitHub Releases](https://github.com/lavalink-devs/Lavalink/releases).
 
-> ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
+```bash
+# Or use the helper script
+python scripts/download_lavalink.py
+```
 
-### YouTube.js (YouTube Backend)
+#### 2. Start Lavalink
 
-This bot uses **[YouTube.js](https://github.com/LuanRT/YouTube.js)** for YouTube support, which interfaces directly with YouTube's InnerTube API. No external binaries or Python required!
+```bash
+cd lavalink
+java -jar Lavalink.jar
+```
 
-**Benefits:**
-- Pure JavaScript - no Python or external binaries needed
-- Actively maintained with frequent updates
-- Direct access to YouTube's internal API
-- More reliable than ytdl-core
+Lavalink will automatically download the configured plugins on first start.
 
-**Technical Notes (v4.3.1):**
-- Uses the **TV InnerTube client** for streaming URLs (WEB client switched to SABR which doesn't provide separate URLs)
-- Implements custom JavaScript evaluator for URL signature deciphering
-- Supports cookie-based authentication for age-restricted content (see below)
+#### 3. Setup Python Bot
 
-### Discord Bot Setup
+```bash
+# Create virtual environment
+python -m venv venv
 
-1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Go to **Bot** → **Add Bot**
-3. Enable **MESSAGE CONTENT INTENT** under Privileged Gateway Intents
-4. Copy the bot token
-5. Go to **OAuth2** → **URL Generator**, select `bot` and `applications.commands` scopes
-6. Select permissions: `Connect`, `Speak`, `Send Messages`, `Embed Links`
-7. Use the generated URL to invite the bot to your server
+# Activate it
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
 
-## 📋 Commands
+# Install dependencies
+pip install -r requirements.txt
+```
 
-### 🎶 Playing Music
+#### 4. Configure Environment
+
+```bash
+# Copy example env
+cp .env.example .env
+
+# Edit .env with your values
+```
+
+Required environment variables:
+- `BOT_TOKEN` - Your Discord bot token
+- `LAVALINK_URI` - Lavalink server URI (default: http://localhost:2333)
+- `LAVALINK_PASSWORD` - Lavalink password (default: youshallnotpass)
+
+### 5. Run the Bot
+
+```bash
+python bot.py
+```
+
+## Commands
+
+### Playing Music
 | Command | Description |
 |---------|-------------|
-| `/play <query>` | Play from YouTube/Spotify/SoundCloud URL or search |
-| `/search <query>` | Interactive YouTube search with selection |
-| `/radio <preset\|url>` | Play radio stream (see presets below) |
-
-### ⏯️ Playback Control
-| Command | Description |
-|---------|-------------|
+| `/play <query>` | Play from URL or search |
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/stop` | Stop and disconnect |
-| `/volume <0-200>` | Set playback volume (%) |
-| `/seek <timestamp>` | Jump to position (e.g., `1:30`, `90`) |
-| `/replay` | Restart current song |
-| `/previous` | Play the previous song |
-| `/filters <filter>` | Apply audio filters |
+| `/skip` | Skip current track |
+| `/voteskip` | Vote to skip |
+| `/previous` | Play previous track |
+| `/seek <time>` | Seek to timestamp |
+| `/replay` | Restart current track |
 
-### ⏭️ Skipping
+### Queue Management
 | Command | Description |
 |---------|-------------|
-| `/skip` | Force skip (DJ/requester only) |
-| `/voteskip` | Vote to skip current song |
-| `/jump <position>` | Jump to song at queue position |
-| `/skipto <position>` | Alias for /jump |
-
-### 📋 Queue Management
-| Command | Description |
-|---------|-------------|
-| `/queue [page]` | View the current queue |
-| `/nowplaying` | Rich now playing embed with progress |
-| `/np` | Quick now playing info |
+| `/queue` | View the queue |
+| `/nowplaying` | Current track with progress |
 | `/shuffle` | Shuffle the queue |
-| `/clear` | Clear queue (DJ only) |
-| `/remove <position>` | Remove song at position |
-| `/move <from> <to>` | Move song in queue |
+| `/clear` | Clear the queue |
+| `/remove <pos>` | Remove a track |
+| `/move <from> <to>` | Move a track |
+| `/jump <pos>` | Jump to a track |
+| `/loop` | Toggle loop mode |
+| `/autoplay` | Toggle autoplay |
 
-### 💾 Playlists
+### Audio Filters
 | Command | Description |
 |---------|-------------|
-| `/savelist <name>` | Save current queue as playlist |
-| `/loadlist <name>` | Load and play a saved playlist |
-| `/playlists` | View your saved playlists |
-| `/appendlist <name>` | Add current queue to playlist |
-| `/deletelist <name>` | Delete a saved playlist |
+| `/filters <filter>` | Apply audio filter |
+| `/equalizer <preset>` | EQ presets |
+| `/volume <0-200>` | Set volume |
+| `/speed <0.5-2.0>` | Playback speed |
+| `/pitch <0.5-2.0>` | Audio pitch |
 
-### ⚙️ Settings
+Available filters: bassboost, nightcore, vaporwave, karaoke, 8d, treble, slow, fast, lofi, vibrato, loud
+
+### Playlists
 | Command | Description |
 |---------|-------------|
-| `/loop` | Cycle loop mode (off → song → queue) |
-| `/autoplay` | Toggle autoplay (queue related songs) |
-| `/247` | Toggle 24/7 mode (stay in channel) |
+| `/savelist <name>` | Save queue as playlist |
+| `/loadlist <name>` | Load a playlist |
+| `/playlists` | List your playlists |
+| `/deletelist <name>` | Delete a playlist |
+| `/appendlist <name>` | Add queue to playlist |
 
-### 🔧 Utility
-| Command | Description |
-|---------|-------------|
-| `/help` | Show all commands |
-| `/refreshcommands` | Refresh slash commands (owner only) |
+## Lavalink Plugins
 
-## 📻 Radio Presets
+This setup includes:
 
-Use `/radio <preset>` with these built-in stations:
+- **youtube-plugin** - YouTube support with anti-bot bypass
+- **LavaSrc** - Spotify, Apple Music, Deezer integration
+- **SponsorBlock** - Auto-skip sponsors in YouTube videos
 
-| Preset | Genre |
-|--------|-------|
-| `lofi` | Lo-Fi hip hop beats |
-| `jazz` | Jazz radio |
-| `classical` | Classical music |
-| `chillhop` | Chillhop music |
-| `synthwave` | Synthwave/retrowave |
-| `rock` | Rock radio |
-| `electronic` | Electronic/Techno |
-| `ambient` | Ambient chill |
-| `hiphop` | Hip hop radio |
+Configure them in `lavalink/application.yml`.
 
-Or provide any direct stream URL: `/play https://stream.example.com/radio.mp3`
+## Performance Notes
 
-## 🎛️ Audio Filters
+- Lavalink handles all audio processing, the Python bot just sends commands
+- Can scale to hundreds of servers per Lavalink node
+- Multiple Lavalink nodes supported for redundancy
+- Memory usage: ~50-100MB for bot, ~200-400MB for Lavalink per server
 
-Use `/filters <filter>` to toggle audio effects:
+## Troubleshooting
 
-| Filter | Effect |
-|--------|--------|
-| `bassboost` | Enhanced bass |
-| `nightcore` | Sped up + higher pitch |
-| `vaporwave` | Slowed down + lower pitch |
-| `3d` | 3D spatial audio |
-| `echo` | Echo/reverb effect |
-| `karaoke` | Remove vocals |
-| `surround` | Surround sound |
-| `slow` | Slow playback |
-| `fast` | Fast playback |
-| `clear` | Remove all filters |
+### Lavalink won't start
+- Ensure Java 17+ is installed: `java -version`
+- Check port 2333 is available
 
-## 🛠️ Development
+### YouTube not working
+- Update youtube-plugin in application.yml to latest version
+- Check Lavalink logs for errors
 
-```bash
-# Run with auto-reload (Node 18+)
-npm run dev
-```
+### Spotify not working
+- Add your Spotify API credentials in application.yml
+- Ensure LavaSrc plugin is configured
 
-## 📜 Version History
+## License
 
-- **v4.3.0** — Switched to YouTube.js (InnerTube API) - no Python/external binaries needed
-- **v4.2.0** — Switched to custom yt-dlp plugin for better YouTube compatibility
-- **v4.1.0** — Added audio filters, previous song, skipto command, more radio stations, improved queue display
-- **v4.0.0** — DisTube migration (actively maintained), improved YouTube reliability
-- **v3.0.0** — Multi-platform support (SoundCloud, Radio), saved playlists, autoplay, 24/7 mode, seek, replay
-- **v2.0.0** — Modular architecture, play-dl migration
-- **v1.0.0** — Initial release
-
-## 🔧 Troubleshooting
-
-### YouTube playback issues
-- YouTube may rate-limit or block requests. Try adding YouTube cookies:
-  1. Open incognito window, log into YouTube
-  2. Open DevTools (F12) → Network tab
-  3. Copy the `Cookie` header value from any youtube.com request
-  4. Paste into `youtube-cookies.txt` in project root
-- Ensure FFmpeg is properly installed: `ffmpeg -version`
-
-### Bot won't connect to voice
-- Ensure the bot has `Connect` and `Speak` permissions
-- Check that no other bot is using the voice channel exclusively
-
-### Commands not showing
-- Run `/refreshcommands` (owner only) or restart the bot
-- Ensure you invited the bot with `applications.commands` scope
-
-## 📄 License
-
-[MIT](LICENSE)
+MIT

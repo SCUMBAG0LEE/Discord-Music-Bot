@@ -1,0 +1,13 @@
+# Discord Music Bot - Python + Lavalink
+# Best-in-class audio performance
+
+# Core
+discord.py>=2.4.0
+wavelink>=3.4.0
+
+# Utilities
+python-dotenv>=1.0.0
+aiohttp>=3.9.0
+
+# Optional: Spotify direct integration (if not using LavaSrc)
+# spotipy>=2.23.0
