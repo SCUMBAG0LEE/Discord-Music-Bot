@@ -287,7 +287,6 @@ async function findYtdlp() {
     '/usr/local/bin/yt-dlp',                     // System-wide install
     '/usr/bin/yt-dlp',                           // Package manager install
     `${process.env.HOME}/.local/bin/yt-dlp`,     // pip user install (Linux)
-    '/home/william/.local/bin/yt-dlp',           // Specific user path
   ];
   
   for (const tryPath of possiblePaths) {
@@ -342,6 +341,13 @@ function convertToNetscapeFormat(cookies) {
 
 /** @type {string|null} */
 let tempCookieFile = null;
+
+// Cleanup temp cookie file on process exit
+process.on('exit', () => {
+  if (tempCookieFile && fs.existsSync(tempCookieFile)) {
+    try { fs.unlinkSync(tempCookieFile); } catch {}
+  }
+});
 
 /**
  * Get stream URL using yt-dlp (fallback when YouTube.js fails)
@@ -423,10 +429,14 @@ async function getStreamURLWithYtdlp(videoId) {
     });
     
     // Timeout after 15 seconds
-    setTimeout(() => {
-      proc.kill();
+    const timeout = setTimeout(() => {
+      proc.kill('SIGTERM');
+      console.warn('[yt-dlp] Timed out after 15 seconds');
       resolve(null);
     }, 15000);
+    
+    // Clear timeout when process finishes normally
+    proc.on('close', () => clearTimeout(timeout));
   });
 }
 
