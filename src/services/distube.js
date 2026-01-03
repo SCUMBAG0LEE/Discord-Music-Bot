@@ -61,11 +61,28 @@ function initialize(client) {
  */
 function setupEvents(distube) {
   distube
-    .on(Events.PLAY_SONG, (queue, song) => {
+    .on(Events.PLAY_SONG, async (queue, song) => {
       logger.player(queue.id, 'playSong', { title: song.name, duration: song.duration });
       // Clear vote skip votes when a new song starts
       if (queue.votes) queue.votes.clear();
-      queue.textChannel?.send(`🎵 Now playing: **${song.name}** - \`${song.formattedDuration}\``);
+      
+      const nowPlayingMsg = `🎵 Now playing: **${song.name}** - \`${song.formattedDuration}\``;
+      
+      // Try to edit the original "Processing" message if it exists
+      const replyMessage = song.metadata?.replyMessage;
+      if (replyMessage) {
+        try {
+          await replyMessage.edit(nowPlayingMsg);
+          // Clear the metadata so subsequent songs send new messages
+          delete song.metadata.replyMessage;
+          return;
+        } catch (e) {
+          // If edit fails (message deleted, etc.), fall through to send new message
+        }
+      }
+      
+      // Fallback: send a new message (for skip, autoplay, etc.)
+      queue.textChannel?.send(nowPlayingMsg);
     })
     .on(Events.ADD_SONG, (queue, song) => {
       logger.queue(queue.id, 'addSong', { title: song.name });

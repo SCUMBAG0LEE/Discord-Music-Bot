@@ -317,48 +317,73 @@ class YouTubeJsPlugin extends PlayableExtractorPlugin {
     const yt = await getInnertube();
     const videoId = extractVideoId(song.url) || song.id;
     
-    // Use TV client which provides signature_cipher URLs that can be deciphered
-    // The default WEB client now uses SABR which doesn't provide separate streaming URLs
-    const info = await yt.getInfo(videoId, { client: 'TV' });
-    const streamingData = info.streaming_data;
+    // Try multiple InnerTube clients - prioritize embedded/web clients that don't require
+    // specific User-Agent headers (ANDROID/IOS URLs get 403 without proper UA)
+    // WEB client uses SABR now, so we use embedded players and TV clients
+    const clientsToTry = [
+      'WEB_EMBEDDED',           // Embedded web player - most permissive
+      'TVHTML5_SIMPLY_EMBEDDED_PLAYER', // TV embedded - good for restricted videos
+      'TV',                     // TV client - requires auth for some videos
+      'WEB_CREATOR',            // YouTube Studio client
+    ];
     
-    if (!streamingData) {
-      throw new Error('[YouTube.js] No streaming data available');
-    }
+    let lastError = null;
     
-    const format = getBestAudioFormat(streamingData);
-    if (!format) {
-      throw new Error('[YouTube.js] No suitable audio format found');
-    }
-    
-    // Try to get the URL - format may already have a direct URL or need deciphering
-    let url;
-    
-    // First check if format already has a direct URL
-    if (format.url) {
-      url = format.url;
-    } 
-    // If not, try to decipher it using the TV client's signature_cipher
-    else if (format.signature_cipher || format.cipher) {
+    for (const client of clientsToTry) {
       try {
-        // decipher() is now async in newer versions of YouTube.js
-        url = await format.decipher(yt.session.player);
-      } catch (err) {
-        console.warn('[YouTube.js] Decipher failed:', err.message);
-        // Try without await for older versions
-        try {
-          url = format.decipher(yt.session.player);
-        } catch (syncErr) {
-          console.warn('[YouTube.js] Sync decipher also failed:', syncErr.message);
+        console.log(`[YouTube.js] Trying ${client} client for ${videoId}...`);
+        const info = await yt.getInfo(videoId, { client });
+        const streamingData = info.streaming_data;
+        
+        if (!streamingData) {
+          console.warn(`[YouTube.js] ${client} client returned no streaming data`);
+          continue;
         }
+        
+        const format = getBestAudioFormat(streamingData);
+        if (!format) {
+          console.warn(`[YouTube.js] ${client} client returned no suitable audio format`);
+          continue;
+        }
+        
+        // Try to get the URL - format may already have a direct URL or need deciphering
+        let url;
+        
+        // First check if format already has a direct URL
+        if (format.url) {
+          url = format.url;
+          console.log(`[YouTube.js] ${client} client provided direct URL`);
+        } 
+        // If not, try to decipher it using the signature_cipher
+        else if (format.signature_cipher || format.cipher) {
+          try {
+            // decipher() is now async in newer versions of YouTube.js
+            url = await format.decipher(yt.session.player);
+            console.log(`[YouTube.js] ${client} client URL deciphered successfully`);
+          } catch (err) {
+            console.warn(`[YouTube.js] ${client} decipher failed:`, err.message);
+            // Try without await for older versions
+            try {
+              url = format.decipher(yt.session.player);
+              console.log(`[YouTube.js] ${client} client URL deciphered (sync)`);
+            } catch (syncErr) {
+              console.warn(`[YouTube.js] ${client} sync decipher also failed:`, syncErr.message);
+              continue;
+            }
+          }
+        }
+        
+        if (url) {
+          return url;
+        }
+      } catch (err) {
+        console.warn(`[YouTube.js] ${client} client failed:`, err.message);
+        lastError = err;
+        continue;
       }
     }
     
-    if (!url) {
-      throw new Error('[YouTube.js] Failed to get stream URL - no direct URL or decipher failed');
-    }
-    
-    return url;
+    throw new Error(`[YouTube.js] All clients failed to get stream URL. Last error: ${lastError?.message || 'Unknown'}`);
   }
 
   async getRelatedSongs(song) {

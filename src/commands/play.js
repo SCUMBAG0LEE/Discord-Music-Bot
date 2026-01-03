@@ -57,13 +57,18 @@ module.exports = {
 
       // Let DisTube handle everything else (YouTube, Spotify, SoundCloud, search)
       logger.urlDetection(query, 'distube-auto');
+      
+      // Send initial "processing" message and store it for later editing
+      const replyMsg = await interaction.editReply('🔍 Processing: **' + query.substring(0, 100) + '**...');
+      
       await distube.play(voiceChannel, query, {
         textChannel: interaction.channel,
-        member: interaction.member
+        member: interaction.member,
+        metadata: { replyMessage: replyMsg }
       });
       
-      // DisTube events will handle the "Now playing" message
-      return interaction.editReply('🔍 Processing: **' + query.substring(0, 100) + '**...');
+      // The PLAY_SONG event will update the message to "Now playing"
+      return;
 
     } catch (error) {
       logger.error('Play', 'Command failed for query: ' + query.substring(0, 50), error);
