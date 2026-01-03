@@ -68,7 +68,7 @@ function setupEvents(distube) {
       
       const nowPlayingMsg = `🎵 Now playing: **${song.name}** - \`${song.formattedDuration}\``;
       
-      // Try to edit the original "Processing" message if it exists
+      // Try to edit the original "Processing" message if it exists (DisTube stores metadata on Song)
       const replyMessage = song.metadata?.replyMessage;
       if (replyMessage) {
         try {
@@ -77,7 +77,8 @@ function setupEvents(distube) {
           delete song.metadata.replyMessage;
           return;
         } catch (e) {
-          // If edit fails (message deleted, etc.), fall through to send new message
+          // If edit fails (message deleted, timeout, etc.), fall through to send new message
+          logger.debug('DisTube', 'Could not edit reply message: ' + e.message);
         }
       }
       
