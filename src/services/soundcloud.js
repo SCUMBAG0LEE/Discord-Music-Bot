@@ -6,6 +6,12 @@ const play = require('play-dl');
  * @returns {boolean}
  */
 function isSoundCloudUrl(url) {
+  // First check if it looks like a SoundCloud URL
+  const scRegex = /^(https?:\/\/)?(www\.|m\.)?(soundcloud\.com|snd\.sc)\/.+/i;
+  if (!scRegex.test(url)) {
+    return false;
+  }
+  // Then validate with play-dl
   return play.so_validate(url) !== false;
 }
 

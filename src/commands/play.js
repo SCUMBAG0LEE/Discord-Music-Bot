@@ -45,6 +45,14 @@ module.exports = {
         return await handleSpotify(interaction, query, voiceChannel, guildId, requesterId);
       }
 
+      // Handle YouTube URLs (check BEFORE SoundCloud to avoid false positives)
+      if (youtubeService.isYouTubeUrl(query)) {
+        if (youtubeService.isPlaylistUrl(query)) {
+          return await handleYouTubePlaylist(interaction, query, voiceChannel, guildId, requesterId);
+        }
+        return await handleYouTubeVideoOrSearch(interaction, query, voiceChannel, guildId, requesterId);
+      }
+
       // Handle SoundCloud URLs
       if (soundcloudService.isSoundCloudUrl(query)) {
         return await handleSoundCloud(interaction, query, voiceChannel, guildId, requesterId);
@@ -55,12 +63,7 @@ module.exports = {
         return await handleStream(interaction, query, voiceChannel, guildId, requesterId);
       }
 
-      // Handle YouTube Playlist
-      if (youtubeService.isPlaylistUrl(query)) {
-        return await handleYouTubePlaylist(interaction, query, voiceChannel, guildId, requesterId);
-      }
-
-      // Handle YouTube Video or Search
+      // Fallback: treat as YouTube search
       return await handleYouTubeVideoOrSearch(interaction, query, voiceChannel, guildId, requesterId);
 
     } catch (error) {

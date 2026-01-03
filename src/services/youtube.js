@@ -1,6 +1,22 @@
 const play = require('play-dl');
 
 /**
+ * Check if URL is any valid YouTube URL (video or playlist)
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isYouTubeUrl(url) {
+  // Check using play-dl validator
+  const validation = play.yt_validate(url);
+  if (validation === 'video' || validation === 'playlist') {
+    return true;
+  }
+  // Fallback regex for edge cases (youtu.be, youtube.com, music.youtube.com)
+  const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\/.+/i;
+  return ytRegex.test(url);
+}
+
+/**
  * Check if URL is a valid YouTube video URL
  * @param {string} url
  * @returns {boolean}
@@ -189,6 +205,7 @@ async function getStreamWithType(url, seekTime = 0) {
 }
 
 module.exports = {
+  isYouTubeUrl,
   isVideoUrl,
   isPlaylistUrl,
   getVideo,
