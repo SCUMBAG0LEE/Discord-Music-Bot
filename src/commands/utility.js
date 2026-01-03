@@ -15,37 +15,37 @@ const commands = {
         fields: [
           {
             name: '🎶 Playing Music',
-            value: '`/play` - Play from URL or search\n`/search` - Interactive search',
+            value: '`/play` - Play from URL or search\n`/search` - Interactive search\n`/radio` - Radio station presets',
             inline: true
           },
           {
             name: '⏯️ Playback Control',
-            value: '`/pause` - Pause\n`/resume` - Resume\n`/stop` - Stop & disconnect\n`/volume` - Set volume (0-5)',
+            value: '`/pause` `/resume` `/stop`\n`/volume` - Set volume (0-5)\n`/seek` - Jump to timestamp\n`/replay` - Restart song',
             inline: true
           },
           {
             name: '⏭️ Skipping',
-            value: '`/skip` - Force skip (DJ/requester)\n`/voteskip` - Vote to skip\n`/jump` - Jump to position',
+            value: '`/skip` - Force skip (DJ)\n`/voteskip` - Vote to skip\n`/jump` - Jump to position',
             inline: true
           },
           {
             name: '📋 Queue',
-            value: '`/queue` - View queue\n`/np` - Now playing\n`/shuffle` - Shuffle queue\n`/clear` - Clear queue',
+            value: '`/queue` - View queue\n`/nowplaying` - Now playing\n`/shuffle` `/clear`\n`/remove` `/move`',
             inline: true
           },
           {
-            name: '✏️ Queue Editing',
-            value: '`/remove` - Remove song\n`/move` - Move song',
+            name: '💾 Playlists',
+            value: '`/savelist` - Save queue\n`/loadlist` - Load playlist\n`/playlists` - Your playlists\n`/deletelist` - Delete playlist',
             inline: true
           },
           {
-            name: '🔁 Other',
-            value: '`/loop` - Toggle loop\n`/help` - This message',
+            name: '⚙️ Settings',
+            value: '`/loop` - Toggle loop\n`/autoplay` - Auto-queue songs\n`/247` - Stay in channel',
             inline: true
           }
         ],
         footer: {
-          text: 'Supports YouTube & Spotify links!'
+          text: 'Supports YouTube, Spotify, SoundCloud & Radio streams!'
         }
       };
 

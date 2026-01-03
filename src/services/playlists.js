@@ -1,0 +1,183 @@
+const fs = require('fs').promises;
+const path = require('path');
+
+// Directory for storing playlists
+const PLAYLISTS_DIR = path.join(process.cwd(), 'data', 'playlists');
+
+/**
+ * Ensure playlists directory exists
+ */
+async function ensureDirectory() {
+  try {
+    await fs.mkdir(PLAYLISTS_DIR, { recursive: true });
+  } catch (err) {
+    if (err.code !== 'EEXIST') {
+      console.error('Error creating playlists directory:', err);
+    }
+  }
+}
+
+/**
+ * Get playlist file path for a user
+ * @param {string} userId
+ * @param {string} playlistName
+ * @returns {string}
+ */
+function getPlaylistPath(userId, playlistName) {
+  const safeName = playlistName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  return path.join(PLAYLISTS_DIR, `${userId}_${safeName}.json`);
+}
+
+/**
+ * Save a playlist
+ * @param {string} userId - Discord user ID
+ * @param {string} name - Playlist name
+ * @param {Object[]} songs - Array of song objects
+ * @returns {Promise<{success: boolean, error: string|null}>}
+ */
+async function savePlaylist(userId, name, songs) {
+  await ensureDirectory();
+  
+  if (!name || name.length > 32) {
+    return { success: false, error: 'Playlist name must be 1-32 characters.' };
+  }
+  
+  if (songs.length === 0) {
+    return { success: false, error: 'Cannot save empty playlist.' };
+  }
+  
+  if (songs.length > 200) {
+    return { success: false, error: 'Playlist cannot exceed 200 songs.' };
+  }
+  
+  // Store only essential song data
+  const playlistData = {
+    name,
+    userId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    songs: songs.map(song => ({
+      title: song.title,
+      url: song.url,
+      duration: song.duration || 0,
+      source: song.source || 'youtube',
+      sourceUrl: song.sourceUrl || song.url
+    }))
+  };
+  
+  try {
+    const filePath = getPlaylistPath(userId, name);
+    await fs.writeFile(filePath, JSON.stringify(playlistData, null, 2));
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Error saving playlist:', err);
+    return { success: false, error: 'Failed to save playlist.' };
+  }
+}
+
+/**
+ * Load a playlist
+ * @param {string} userId - Discord user ID
+ * @param {string} name - Playlist name
+ * @returns {Promise<{playlist: Object|null, error: string|null}>}
+ */
+async function loadPlaylist(userId, name) {
+  try {
+    const filePath = getPlaylistPath(userId, name);
+    const data = await fs.readFile(filePath, 'utf-8');
+    const playlist = JSON.parse(data);
+    return { playlist, error: null };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return { playlist: null, error: `Playlist "${name}" not found.` };
+    }
+    console.error('Error loading playlist:', err);
+    return { playlist: null, error: 'Failed to load playlist.' };
+  }
+}
+
+/**
+ * Delete a playlist
+ * @param {string} userId - Discord user ID
+ * @param {string} name - Playlist name
+ * @returns {Promise<{success: boolean, error: string|null}>}
+ */
+async function deletePlaylist(userId, name) {
+  try {
+    const filePath = getPlaylistPath(userId, name);
+    await fs.unlink(filePath);
+    return { success: true, error: null };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return { success: false, error: `Playlist "${name}" not found.` };
+    }
+    console.error('Error deleting playlist:', err);
+    return { success: false, error: 'Failed to delete playlist.' };
+  }
+}
+
+/**
+ * List all playlists for a user
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<{playlists: Object[], error: string|null}>}
+ */
+async function listPlaylists(userId) {
+  await ensureDirectory();
+  
+  try {
+    const files = await fs.readdir(PLAYLISTS_DIR);
+    const userFiles = files.filter(f => f.startsWith(`${userId}_`) && f.endsWith('.json'));
+    
+    const playlists = [];
+    for (const file of userFiles) {
+      try {
+        const data = await fs.readFile(path.join(PLAYLISTS_DIR, file), 'utf-8');
+        const playlist = JSON.parse(data);
+        playlists.push({
+          name: playlist.name,
+          songCount: playlist.songs.length,
+          createdAt: playlist.createdAt
+        });
+      } catch {
+        // Skip corrupted files
+      }
+    }
+    
+    return { playlists, error: null };
+  } catch (err) {
+    console.error('Error listing playlists:', err);
+    return { playlists: [], error: 'Failed to list playlists.' };
+  }
+}
+
+/**
+ * Append songs to existing playlist
+ * @param {string} userId
+ * @param {string} name
+ * @param {Object[]} newSongs
+ * @returns {Promise<{success: boolean, error: string|null}>}
+ */
+async function appendToPlaylist(userId, name, newSongs) {
+  const { playlist, error } = await loadPlaylist(userId, name);
+  
+  if (error) {
+    return { success: false, error };
+  }
+  
+  const combinedSongs = [...playlist.songs, ...newSongs];
+  
+  if (combinedSongs.length > 200) {
+    return { success: false, error: `Cannot exceed 200 songs. Current: ${playlist.songs.length}, Adding: ${newSongs.length}` };
+  }
+  
+  return savePlaylist(userId, name, combinedSongs);
+}
+
+module.exports = {
+  savePlaylist,
+  loadPlaylist,
+  deletePlaylist,
+  listPlaylists,
+  appendToPlaylist,
+  ensureDirectory
+};

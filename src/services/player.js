@@ -1,4 +1,4 @@
-const { createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const { queueManager } = require('./queueManager');
 const youtubeService = require('./youtube');
 
@@ -7,7 +7,7 @@ const youtubeService = require('./youtube');
  * @param {string} guildId
  * @param {Object} song
  */
-function playSong(guildId, song) {
+async function playSong(guildId, song) {
   const queue = queueManager.get(guildId);
   
   if (!queue) return;
@@ -22,8 +22,13 @@ function playSong(guildId, song) {
   clearIdleTimer(guildId);
   
   try {
-    const stream = youtubeService.createStream(song.url);
-    const resource = createAudioResource(stream, { inlineVolume: true });
+    // Get stream with type info from play-dl
+    const { stream, type } = await youtubeService.getStreamWithType(song.url);
+    
+    const resource = createAudioResource(stream, {
+      inputType: type,
+      inlineVolume: true
+    });
     resource.volume.setVolume(queue.volume);
     
     queue.resource = resource;
@@ -54,13 +59,16 @@ function setupPlayerEvents(guildId, song) {
   queue.player.removeAllListeners('error');
   
   // Handle song end
-  queue.player.once(AudioPlayerStatus.Idle, () => {
+  queue.player.once(AudioPlayerStatus.Idle, async () => {
     const currentQueue = queueManager.get(guildId);
     if (!currentQueue) return;
     
-    // Check if voice channel is empty
+    // Check if 24/7 mode is enabled
+    const is247 = currentQueue.twentyFourSeven;
+    
+    // Check if voice channel is empty (unless 24/7 mode)
     const humanCount = currentQueue.voiceChannel.members.filter(m => !m.user.bot).size;
-    if (humanCount === 0) {
+    if (humanCount === 0 && !is247) {
       console.log('Disconnecting: no users in voice channel');
       queueManager.delete(guildId);
       return;
@@ -72,6 +80,16 @@ function setupPlayerEvents(guildId, song) {
     } else {
       currentQueue.songs.shift();
       currentQueue.votes = [];
+      
+      // If queue is empty and autoplay is enabled, add related song
+      if (currentQueue.songs.length === 0 && currentQueue.autoplay && song.source === 'youtube') {
+        const relatedSong = await getRelatedSong(song, song.requester);
+        if (relatedSong) {
+          currentQueue.songs.push(relatedSong);
+          console.log(`Autoplay: Added "${relatedSong.title}"`);
+        }
+      }
+      
       playSong(guildId, currentQueue.songs[0]);
     }
   });
@@ -95,6 +113,9 @@ function startIdleTimer(guildId) {
   const queue = queueManager.get(guildId);
   if (!queue) return;
   
+  // Don't set idle timer in 24/7 mode
+  if (queue.twentyFourSeven) return;
+  
   // Clear existing timer
   if (queue.idleTimer) {
     clearTimeout(queue.idleTimer);
@@ -103,6 +124,9 @@ function startIdleTimer(guildId) {
   queue.idleTimer = setTimeout(() => {
     const currentQueue = queueManager.get(guildId);
     if (!currentQueue) return;
+    
+    // Don't disconnect in 24/7 mode
+    if (currentQueue.twentyFourSeven) return;
     
     const humanCount = currentQueue.voiceChannel.members.filter(m => !m.user.bot).size;
     if (humanCount === 0) {
@@ -209,6 +233,95 @@ function toggleLoop(guildId) {
   return queue.loop;
 }
 
+/**
+ * Seek to a specific timestamp
+ * @param {string} guildId
+ * @param {number} seconds - Timestamp in seconds
+ * @returns {Promise<boolean>} Success
+ */
+async function seekTo(guildId, seconds) {
+  const queue = queueManager.get(guildId);
+  if (!queue || queue.songs.length === 0) return false;
+  
+  const song = queue.songs[0];
+  
+  try {
+    // Get new stream starting at the specified time
+    const { stream, type } = await youtubeService.getStreamWithType(song.url, seconds);
+    
+    const resource = createAudioResource(stream, {
+      inputType: type,
+      inlineVolume: true
+    });
+    resource.volume.setVolume(queue.volume);
+    
+    queue.resource = resource;
+    queue.nowPlayingStart = Date.now() - (seconds * 1000); // Adjust start time
+    queue.player.play(resource);
+    
+    return true;
+  } catch (err) {
+    console.error(`Seek error: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Replay current song from beginning
+ * @param {string} guildId
+ * @returns {Promise<boolean>} Success
+ */
+async function replay(guildId) {
+  const queue = queueManager.get(guildId);
+  if (!queue || queue.songs.length === 0) return false;
+  
+  const song = queue.songs[0];
+  
+  try {
+    // Just replay from the start
+    await playSong(guildId, song);
+    return true;
+  } catch (err) {
+    console.error(`Replay error: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Get a related song for autoplay
+ * @param {Object} song - Current song
+ * @param {string} requesterId - User ID to assign as requester
+ * @returns {Promise<Object|null>}
+ */
+async function getRelatedSong(song, requesterId) {
+  try {
+    // Search for related content based on the song title
+    const searchQuery = song.title.replace(/\(.*?\)|\[.*?\]/g, '').trim();
+    const results = await youtubeService.search(searchQuery + ' music', 5);
+    
+    // Find a different song (not the same URL)
+    const related = results.find(r => r.url !== song.url);
+    
+    if (related) {
+      return {
+        title: related.title,
+        url: related.url,
+        duration: related.duration || 0,
+        requester: requesterId,
+        source: 'youtube',
+        sourceUrl: related.url,
+        thumbnail: related.thumbnail || null,
+        autoplay: true
+      };
+    }
+    
+    return null;
+  } catch (err) {
+    console.error('Autoplay search error:', err.message);
+    return null;
+  }
+}
+
 module.exports = {
   playSong,
   setVolume,
@@ -217,5 +330,7 @@ module.exports = {
   stop,
   skip,
   toggleLoop,
+  seekTo,
+  replay,
   clearIdleTimer
 };

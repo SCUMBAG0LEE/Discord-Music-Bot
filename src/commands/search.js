@@ -36,7 +36,7 @@ module.exports = {
 
     const options = results.map((video, index) => ({
       label: truncate(video.title, 100),
-      description: truncate(video.author?.name || 'Unknown', 100),
+      description: truncate(video.author || 'Unknown', 100),
       value: index.toString(),
     }));
 
@@ -64,10 +64,11 @@ module.exports = {
       const song = {
         title: selected.title,
         url: selected.url,
-        duration: selected.seconds || 0,
+        duration: selected.duration || 0,
         requester: interaction.user.id,
         source: 'youtube',
-        sourceUrl: selected.url
+        sourceUrl: selected.url,
+        thumbnail: selected.thumbnail || null
       };
 
       const queue = queueManager.getOrCreate(interaction.guildId, voiceChannel);

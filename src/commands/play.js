@@ -3,15 +3,17 @@ const { queueManager } = require('../services/queueManager');
 const player = require('../services/player');
 const spotifyService = require('../services/spotify');
 const youtubeService = require('../services/youtube');
+const soundcloudService = require('../services/soundcloud');
+const radioService = require('../services/radio');
 const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('play')
-    .setDescription('Play a YouTube video, playlist, Spotify track, playlist, album, or search term.')
+    .setDescription('Play from YouTube, Spotify, SoundCloud, or a direct URL/stream.')
     .addStringOption(option =>
       option.setName('query')
-        .setDescription('YouTube URL, Spotify URL, or search term')
+        .setDescription('URL, search term, or radio preset (lofi, jazz, classical, chillhop, synthwave)')
         .setRequired(true)
     ),
 
@@ -32,9 +34,25 @@ module.exports = {
     const requesterId = interaction.user.id;
 
     try {
+      // Check for radio preset first
+      const presetUrl = radioService.getPresetStation(query);
+      if (presetUrl) {
+        return await handleStream(interaction, query, voiceChannel, guildId, requesterId, true);
+      }
+
       // Handle Spotify URLs
       if (spotifyService.isSpotifyUrl(query)) {
         return await handleSpotify(interaction, query, voiceChannel, guildId, requesterId);
+      }
+
+      // Handle SoundCloud URLs
+      if (soundcloudService.isSoundCloudUrl(query)) {
+        return await handleSoundCloud(interaction, query, voiceChannel, guildId, requesterId);
+      }
+
+      // Handle direct streams/radio URLs
+      if (radioService.isStreamUrl(query) || radioService.isDirectUrl(query)) {
+        return await handleStream(interaction, query, voiceChannel, guildId, requesterId);
       }
 
       // Handle YouTube Playlist
@@ -82,14 +100,37 @@ async function handleSpotify(interaction, query, voiceChannel, guildId, requeste
   return interaction.editReply({ content: 'Unsupported Spotify URL type.' });
 }
 
-async function handleYouTubePlaylist(interaction, query, voiceChannel, guildId, requesterId) {
-  const { songs, name, error } = await youtubeService.getPlaylist(query, requesterId);
+async function handleSoundCloud(interaction, query, voiceChannel, guildId, requesterId) {
+  const resourceType = soundcloudService.getResourceType(query);
+
+  if (resourceType === 'track') {
+    const { song, error } = await soundcloudService.getTrack(query, requesterId);
+    if (error) {
+      return interaction.editReply({ content: error });
+    }
+    return addSongsToQueue(interaction, [song], voiceChannel, guildId, `SoundCloud track`);
+  }
+
+  if (resourceType === 'playlist') {
+    const { songs, name, error } = await soundcloudService.getPlaylist(query, requesterId);
+    if (error) {
+      return interaction.editReply({ content: error });
+    }
+    return addSongsToQueue(interaction, songs, voiceChannel, guildId, `SoundCloud playlist: **${name}**`);
+  }
+
+  return interaction.editReply({ content: 'Unsupported SoundCloud URL type.' });
+}
+
+async function handleStream(interaction, query, voiceChannel, guildId, requesterId, isPreset = false) {
+  const { song, error } = await radioService.getStream(query, requesterId);
   
   if (error) {
     return interaction.editReply({ content: error });
   }
   
-  return addSongsToQueue(interaction, songs, voiceChannel, guildId, `playlist: **${name}**`);
+  const label = isPreset ? `📻 Radio: **${query}**` : '📻 Stream';
+  return addSongsToQueue(interaction, [song], voiceChannel, guildId, label);
 }
 
 async function handleYouTubeVideoOrSearch(interaction, query, voiceChannel, guildId, requesterId) {

@@ -1,6 +1,4 @@
-const ytdl = require('@distube/ytdl-core');
-const ytSearch = require('yt-search');
-const ytpl = require('@distube/ytpl');
+const play = require('play-dl');
 
 /**
  * Check if URL is a valid YouTube video URL
@@ -8,7 +6,7 @@ const ytpl = require('@distube/ytpl');
  * @returns {boolean}
  */
 function isVideoUrl(url) {
-  return ytdl.validateURL(url);
+  return play.yt_validate(url) === 'video';
 }
 
 /**
@@ -17,7 +15,7 @@ function isVideoUrl(url) {
  * @returns {boolean}
  */
 function isPlaylistUrl(url) {
-  return ytpl.validateID(url);
+  return play.yt_validate(url) === 'playlist';
 }
 
 /**
@@ -28,14 +26,17 @@ function isPlaylistUrl(url) {
  */
 async function getVideo(url, requesterId) {
   try {
-    const info = await ytdl.getInfo(url);
+    const info = await play.video_basic_info(url);
+    const details = info.video_details;
+    
     const song = {
-      title: info.videoDetails.title,
-      url: info.videoDetails.video_url,
-      duration: parseInt(info.videoDetails.lengthSeconds) || 0,
+      title: details.title,
+      url: details.url,
+      duration: details.durationInSec || 0,
       requester: requesterId,
       source: 'youtube',
-      sourceUrl: info.videoDetails.video_url
+      sourceUrl: details.url,
+      thumbnail: details.thumbnails?.[0]?.url || null
     };
     return { song, error: null };
   } catch (err) {
@@ -53,14 +54,17 @@ async function getVideo(url, requesterId) {
  */
 async function getPlaylist(url, requesterId, limit = 50) {
   try {
-    const playlist = await ytpl(url, { limit });
-    const songs = playlist.items.map(item => ({
-      title: item.title,
-      url: item.shortUrl,
-      duration: parseInt(item.durationSec) || 0,
+    const playlist = await play.playlist_info(url, { incomplete: true });
+    const videos = await playlist.all_videos();
+    
+    const songs = videos.slice(0, limit).map(video => ({
+      title: video.title,
+      url: video.url,
+      duration: video.durationInSec || 0,
       requester: requesterId,
       source: 'youtube',
-      sourceUrl: item.shortUrl
+      sourceUrl: video.url,
+      thumbnail: video.thumbnails?.[0]?.url || null
     }));
     
     return { songs, name: playlist.title, error: null };
@@ -78,8 +82,14 @@ async function getPlaylist(url, requesterId, limit = 50) {
  */
 async function search(query, maxResults = 5) {
   try {
-    const result = await ytSearch(query);
-    return result.videos.slice(0, maxResults);
+    const results = await play.search(query, { source: { youtube: 'video' }, limit: maxResults });
+    return results.map(video => ({
+      title: video.title,
+      url: video.url,
+      duration: video.durationInSec || 0,
+      author: video.channel?.name || 'Unknown',
+      thumbnail: video.thumbnails?.[0]?.url || null
+    }));
   } catch (err) {
     console.error('YouTube search error:', err.message);
     return [];
@@ -94,20 +104,21 @@ async function search(query, maxResults = 5) {
  */
 async function searchAndGetFirst(query, requesterId) {
   try {
-    const result = await ytSearch(query);
+    const results = await play.search(query, { source: { youtube: 'video' }, limit: 1 });
     
-    if (!result.videos.length) {
+    if (!results.length) {
       return { song: null, error: 'No video results found.' };
     }
     
-    const video = result.videos[0];
+    const video = results[0];
     const song = {
       title: video.title,
       url: video.url,
-      duration: video.seconds || 0,
+      duration: video.durationInSec || 0,
       requester: requesterId,
       source: 'youtube',
-      sourceUrl: video.url
+      sourceUrl: video.url,
+      thumbnail: video.thumbnails?.[0]?.url || null
     };
     
     return { song, error: null };
@@ -119,7 +130,7 @@ async function searchAndGetFirst(query, requesterId) {
 
 /**
  * Search YouTube using Spotify track info
- * @param {Object} track - Spotify track object
+ * @param {Object} track - Spotify track object (from play-dl)
  * @param {string} requesterId - Discord user ID
  * @returns {Promise<Object|null>}
  */
@@ -127,18 +138,19 @@ async function searchFromSpotifyTrack(track, requesterId) {
   const searchQuery = `${track.name} ${track.artists.map(a => a.name).join(' ')}`;
   
   try {
-    const result = await ytSearch(searchQuery);
+    const results = await play.search(searchQuery, { source: { youtube: 'video' }, limit: 1 });
     
-    if (!result.videos.length) {
+    if (!results.length) {
       return null;
     }
     
-    const video = result.videos[0];
+    const video = results[0];
     return {
       title: video.title,
       url: video.url,
-      duration: video.seconds || 0,
-      requester: requesterId
+      duration: video.durationInSec || 0,
+      requester: requesterId,
+      thumbnail: video.thumbnails?.[0]?.url || null
     };
   } catch (err) {
     console.error('YouTube searchFromSpotifyTrack error:', err.message);
@@ -149,14 +161,31 @@ async function searchFromSpotifyTrack(track, requesterId) {
 /**
  * Create audio stream from URL
  * @param {string} url - YouTube video URL
- * @returns {import('stream').Readable}
+ * @returns {Promise<import('stream').Readable>}
  */
-function createStream(url) {
-  return ytdl(url, {
-    filter: 'audioonly',
-    quality: 'highestaudio',
-    highWaterMark: 1 << 25, // 32MB buffer for smoother playback
-  });
+async function createStream(url) {
+  const stream = await play.stream(url);
+  return stream.stream;
+}
+
+/**
+ * Get stream type for audio resource creation
+ * @param {string} url - YouTube video URL  
+ * @param {number} [seekTime=0] - Time in seconds to start from
+ * @returns {Promise<{stream: import('stream').Readable, type: string}>}
+ */
+async function getStreamWithType(url, seekTime = 0) {
+  const options = {};
+  
+  if (seekTime > 0) {
+    options.seek = seekTime;
+  }
+  
+  const streamData = await play.stream(url, options);
+  return {
+    stream: streamData.stream,
+    type: streamData.type
+  };
 }
 
 module.exports = {
@@ -167,5 +196,6 @@ module.exports = {
   search,
   searchAndGetFirst,
   searchFromSpotifyTrack,
-  createStream
+  createStream,
+  getStreamWithType
 };

@@ -38,7 +38,9 @@ class QueueManager {
         votes: [],
         idleTimer: null,
         resource: null,
-        nowPlayingStart: null
+        nowPlayingStart: null,
+        autoplay: false,
+        twentyFourSeven: false
       };
       
       this.queues.set(guildId, queue);
