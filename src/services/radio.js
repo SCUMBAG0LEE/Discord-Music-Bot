@@ -1,3 +1,5 @@
+const { logger } = require('../utils/logger');
+
 // Common radio stations (can be extended)
 const PRESET_STATIONS = {
   'lofi': 'https://streams.ilovemusic.de/iloveradio17.mp3',
@@ -126,7 +128,7 @@ async function getStream(url, requesterId) {
     
     return createStreamSong(url, requesterId);
   } catch (err) {
-    console.error('Stream getStream error:', err.message);
+    logger.error('Radio', `getStream failed for: ${url}`, err);
     return { song: null, error: 'Error processing stream URL.' };
   }
 }

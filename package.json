@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "debug": "LOG_LEVEL=DEBUG node src/index.js"
+    "debug": "LOG_LEVEL=DEBUG node src/index.js",
+    "setup": "node setup-youtube.js"
   },
   "engines": {
     "node": ">=18.0.0"

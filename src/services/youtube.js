@@ -2,34 +2,33 @@ const play = require('play-dl');
 const { logger } = require('../utils/logger');
 
 /**
- * Initialize YouTube with cookies if available
- * This helps avoid "Invalid URL" errors from YouTube blocking requests
+ * Initialize YouTube authentication
+ * Uses OAuth tokens from .data/youtube.data (created by setup-youtube.js)
+ * Tokens auto-refresh, no manual cookie management needed!
  */
 async function initialize() {
   try {
-    // Check if YouTube cookies are configured
-    if (process.env.YOUTUBE_COOKIE) {
-      logger.info('YouTube', 'Setting up YouTube cookies...');
-      await play.setToken({
-        youtube: {
-          cookie: process.env.YOUTUBE_COOKIE
-        }
-      });
-      logger.success('YouTube', 'Cookies configured');
-    } else {
-      logger.warn('YouTube', 'No YouTube cookies configured - some videos may fail to play');
-      logger.info('YouTube', 'To fix: Add YOUTUBE_COOKIE to your .env file');
-      logger.info('YouTube', 'Get cookies from browser: https://github.com/AuReMe/cookie-notice-blocker/wiki/How-to-export-cookies-from-your-browser');
+    // Check if tokens exist and need refresh
+    // play.is_expired() returns boolean, not a promise
+    let expired = true;
+    try {
+      expired = play.is_expired();
+    } catch {
+      // No tokens exist
     }
     
-    // Refresh YouTube token
-    if (play.is_expired()) {
-      logger.info('YouTube', 'Refreshing YouTube token...');
+    if (expired) {
+      logger.info('YouTube', 'Refreshing OAuth tokens...');
       await play.refreshToken();
-      logger.success('YouTube', 'Token refreshed');
+      logger.success('YouTube', 'Tokens refreshed successfully');
+    } else {
+      logger.success('YouTube', 'OAuth tokens are valid');
     }
   } catch (err) {
-    logger.error('YouTube', 'Failed to initialize YouTube', err);
+    // Not fatal - might work without auth for some videos
+    logger.warn('YouTube', 'No YouTube authorization found');
+    logger.info('YouTube', 'Run "node setup-youtube.js" to authorize (recommended)');
+    logger.info('YouTube', 'Without auth, some videos may fail with "Invalid URL" errors');
   }
 }
 
@@ -124,7 +123,7 @@ async function getPlaylist(url, requesterId, limit = 50) {
     
     return { songs, name: playlist.title, error: null };
   } catch (err) {
-    console.error('YouTube getPlaylist error:', err.message);
+    logger.error('YouTube', `getPlaylist failed for: ${url}`, err);
     return { songs: [], name: null, error: 'Error fetching playlist details.' };
   }
 }
@@ -146,7 +145,7 @@ async function search(query, maxResults = 5) {
       thumbnail: video.thumbnails?.[0]?.url || null
     }));
   } catch (err) {
-    console.error('YouTube search error:', err.message);
+    logger.error('YouTube', `Search failed for: ${query}`, err);
     return [];
   }
 }
@@ -176,9 +175,10 @@ async function searchAndGetFirst(query, requesterId) {
       thumbnail: video.thumbnails?.[0]?.url || null
     };
     
+    logger.info('YouTube', `Search result: "${song.title}"`);
     return { song, error: null };
   } catch (err) {
-    console.error('YouTube searchAndGetFirst error:', err.message);
+    logger.error('YouTube', `searchAndGetFirst failed for: ${query}`, err);
     return { song: null, error: 'Error searching YouTube.' };
   }
 }
@@ -208,7 +208,7 @@ async function searchFromSpotifyTrack(track, requesterId) {
       thumbnail: video.thumbnails?.[0]?.url || null
     };
   } catch (err) {
-    console.error('YouTube searchFromSpotifyTrack error:', err.message);
+    logger.error('YouTube', `searchFromSpotifyTrack failed for: ${searchQuery}`, err);
     return null;
   }
 }
@@ -309,7 +309,7 @@ async function getStreamWithType(url, seekTime = 0) {
       // Provide helpful error message
       if (fallbackErr.message.includes('Invalid URL') || err.message.includes('Invalid URL')) {
         logger.error('YouTube', 'This error usually means YouTube is blocking requests.');
-        logger.error('YouTube', 'Solution: Add YouTube cookies to your .env file as YOUTUBE_COOKIE');
+        logger.error('YouTube', 'Solution: Run "node setup-youtube.js" to authorize with Google OAuth');
       }
       
       throw fallbackErr;

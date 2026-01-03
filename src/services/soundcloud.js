@@ -1,4 +1,5 @@
 const play = require('play-dl');
+const { logger } = require('../utils/logger');
 
 /**
  * Check if URL is a SoundCloud URL
@@ -55,7 +56,7 @@ async function getTrack(url, requesterId) {
     
     return { song, error: null };
   } catch (err) {
-    console.error('SoundCloud getTrack error:', err.message);
+    logger.error('SoundCloud', `getTrack failed for: ${url}`, err);
     return { song: null, error: 'Error fetching SoundCloud track.' };
   }
 }
@@ -93,7 +94,7 @@ async function getPlaylist(url, requesterId) {
     
     return { songs, name: playlist.name, error: null };
   } catch (err) {
-    console.error('SoundCloud getPlaylist error:', err.message);
+    logger.error('SoundCloud', `getPlaylist failed for: ${url}`, err);
     return { songs: [], name: null, error: 'Error fetching SoundCloud playlist.' };
   }
 }
@@ -115,7 +116,7 @@ async function search(query, maxResults = 5) {
       thumbnail: track.thumbnail || null
     }));
   } catch (err) {
-    console.error('SoundCloud search error:', err.message);
+    logger.error('SoundCloud', `Search failed for: ${query}`, err);
     return [];
   }
 }

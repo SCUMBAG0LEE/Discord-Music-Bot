@@ -1,5 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
+const { logger } = require('../utils/logger');
 
 // Directory for storing playlists
 const PLAYLISTS_DIR = path.join(process.cwd(), 'data', 'playlists');
@@ -12,7 +13,7 @@ async function ensureDirectory() {
     await fs.mkdir(PLAYLISTS_DIR, { recursive: true });
   } catch (err) {
     if (err.code !== 'EEXIST') {
-      console.error('Error creating playlists directory:', err);
+      logger.error('Playlists', 'Error creating playlists directory', err);
     }
   }
 }
@@ -70,7 +71,7 @@ async function savePlaylist(userId, name, songs) {
     await fs.writeFile(filePath, JSON.stringify(playlistData, null, 2));
     return { success: true, error: null };
   } catch (err) {
-    console.error('Error saving playlist:', err);
+    logger.error('Playlists', `Error saving playlist: ${name}`, err);
     return { success: false, error: 'Failed to save playlist.' };
   }
 }
@@ -91,7 +92,7 @@ async function loadPlaylist(userId, name) {
     if (err.code === 'ENOENT') {
       return { playlist: null, error: `Playlist "${name}" not found.` };
     }
-    console.error('Error loading playlist:', err);
+    logger.error('Playlists', `Error loading playlist: ${name}`, err);
     return { playlist: null, error: 'Failed to load playlist.' };
   }
 }
@@ -111,7 +112,7 @@ async function deletePlaylist(userId, name) {
     if (err.code === 'ENOENT') {
       return { success: false, error: `Playlist "${name}" not found.` };
     }
-    console.error('Error deleting playlist:', err);
+    logger.error('Playlists', `Error deleting playlist: ${name}`, err);
     return { success: false, error: 'Failed to delete playlist.' };
   }
 }
@@ -145,7 +146,7 @@ async function listPlaylists(userId) {
     
     return { playlists, error: null };
   } catch (err) {
-    console.error('Error listing playlists:', err);
+    logger.error('Playlists', 'Error listing playlists', err);
     return { playlists: [], error: 'Failed to list playlists.' };
   }
 }

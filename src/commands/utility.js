@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, REST, Routes } = require('discord.js');
 const { isGuildInteraction, isOwner } = require('../utils/permissions');
+const { logger } = require('../utils/logger');
 
 const commands = {
   // Help
@@ -69,7 +70,7 @@ const commands = {
         await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
         return interaction.reply('✅ All global commands have been removed. Changes may take up to an hour to propagate.');
       } catch (error) {
-        console.error('Error refreshing commands:', error);
+        logger.error('Utility', 'Error refreshing commands', error);
         return interaction.reply({ content: 'There was an error refreshing commands.', ephemeral: true });
       }
     }

@@ -347,7 +347,7 @@ async function seekTo(guildId, seconds) {
     
     return true;
   } catch (err) {
-    console.error(`Seek error: ${err.message}`);
+    logger.error('Player', `Seek failed for: ${song.title}`, err);
     return false;
   }
 }
@@ -368,7 +368,7 @@ async function replay(guildId) {
     await playSong(guildId, song);
     return true;
   } catch (err) {
-    console.error(`Replay error: ${err.message}`);
+    logger.error('Player', `Replay failed for: ${song.title}`, err);
     return false;
   }
 }
@@ -403,7 +403,7 @@ async function getRelatedSong(song, requesterId) {
     
     return null;
   } catch (err) {
-    console.error('Autoplay search error:', err.message);
+    logger.error('Player', `Autoplay search failed for: ${song.title}`, err);
     return null;
   }
 }

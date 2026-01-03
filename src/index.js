@@ -69,7 +69,7 @@ async function registerCommands() {
     );
     console.log('✓ Successfully registered slash commands.');
   } catch (error) {
-    console.error('✗ Error registering commands:', error);
+    logger.error('Bot', 'Error registering commands', error);
   }
 }
 

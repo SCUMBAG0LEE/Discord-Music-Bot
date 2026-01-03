@@ -130,7 +130,7 @@ async function getPlaylist(url, requesterId) {
     
     return { songs, name: spotifyData.name, error: null };
   } catch (err) {
-    console.error('Spotify getPlaylist error:', err.message);
+    logger.error('Spotify', `getPlaylist failed for: ${url}`, err);
     return { songs: [], name: null, error: 'Error fetching Spotify playlist details.' };
   }
 }
@@ -170,7 +170,7 @@ async function getAlbum(url, requesterId) {
     
     return { songs, name: spotifyData.name, error: null };
   } catch (err) {
-    console.error('Spotify getAlbum error:', err.message);
+    logger.error('Spotify', `getAlbum failed for: ${url}`, err);
     return { songs: [], name: null, error: 'Error fetching Spotify album details.' };
   }
 }
