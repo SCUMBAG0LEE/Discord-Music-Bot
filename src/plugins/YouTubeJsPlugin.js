@@ -1,19 +1,24 @@
 /**
  * YouTube.js Plugin for DisTube
  * Uses youtubei.js (InnerTube API) for reliable YouTube playback
+ * Falls back to yt-dlp when YouTube.js fails (more actively maintained against blocks)
  * 
- * Benefits over ytdl-core / yt-dlp:
+ * Benefits of YouTube.js:
  * - Pure JavaScript, no external binaries needed
- * - Actively maintained
  * - Direct access to YouTube's InnerTube API
- * - Better handling of YouTube's anti-bot measures
- * - Supports cookie-based authentication for age-restricted content
+ * 
+ * Benefits of yt-dlp fallback:
+ * - Actively maintained by dedicated team fighting YouTube blocks
+ * - More reliable when YouTube tightens restrictions
  */
 
 const { PlayableExtractorPlugin, Song, Playlist } = require('distube');
 const { Innertube, Platform } = require('youtubei.js');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
+const { spawn } = require('child_process');
 
 // Set up custom JavaScript evaluator for deciphering URLs
 // This is required because YouTube.js needs to execute YouTube's obfuscated JS
@@ -184,6 +189,217 @@ function getBestAudioFormat(streamingData) {
   return formats[0];
 }
 
+/**
+ * Verify that a stream URL is accessible (returns 200/206 status)
+ * Uses HEAD request with proper headers to avoid 403 errors
+ * @param {string} url - The URL to verify
+ * @param {object} headers - Headers to send with the request
+ * @returns {Promise<boolean>} - True if URL is accessible
+ */
+function verifyStreamURL(url, headers = {}) {
+  return new Promise((resolve) => {
+    const urlObj = new URL(url);
+    const client = urlObj.protocol === 'https:' ? https : http;
+    
+    const options = {
+      method: 'HEAD',
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://www.youtube.com',
+        'Referer': 'https://www.youtube.com/',
+        ...headers
+      },
+      timeout: 5000
+    };
+
+    const req = client.request(options, (res) => {
+      // 200 OK or 206 Partial Content are valid
+      resolve(res.statusCode === 200 || res.statusCode === 206);
+    });
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+
+    req.end();
+  });
+}
+
+/**
+ * Client configurations with their specific headers
+ * Some clients need specific headers for FFmpeg to work
+ */
+const CLIENT_CONFIGS = {
+  WEB_EMBEDDED: {
+    headers: {
+      'Origin': 'https://www.youtube.com',
+      'Referer': 'https://www.youtube.com/'
+    }
+  },
+  TVHTML5_SIMPLY_EMBEDDED_PLAYER: {
+    headers: {
+      'Origin': 'https://www.youtube.com',
+      'Referer': 'https://www.youtube.com/'
+    }
+  },
+  TV: {
+    headers: {
+      'Origin': 'https://www.youtube.com',
+      'Referer': 'https://www.youtube.com/'
+    }
+  },
+  WEB_CREATOR: {
+    headers: {
+      'Origin': 'https://studio.youtube.com',
+      'Referer': 'https://studio.youtube.com/'
+    }
+  },
+  IOS: {
+    headers: {
+      'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)'
+    }
+  },
+  ANDROID: {
+    headers: {
+      'User-Agent': 'com.google.android.youtube/19.29.37 (Linux; U; Android 14) gzip'
+    }
+  }
+};
+
+/**
+ * Check if yt-dlp is installed and find its path
+ * @returns {Promise<string|null>} - Returns the path to yt-dlp or null if not found
+ */
+let ytdlpPath = undefined; // undefined = not checked, null = not found, string = path
+async function findYtdlp() {
+  if (ytdlpPath !== undefined) return ytdlpPath;
+  
+  // Common paths where yt-dlp might be installed
+  const possiblePaths = [
+    'yt-dlp',                                    // In PATH
+    '/usr/local/bin/yt-dlp',                     // System-wide install
+    '/usr/bin/yt-dlp',                           // Package manager install
+    `${process.env.HOME}/.local/bin/yt-dlp`,     // pip user install (Linux)
+    '/home/william/.local/bin/yt-dlp',           // Specific user path
+  ];
+  
+  for (const tryPath of possiblePaths) {
+    try {
+      const result = await new Promise((resolve) => {
+        const proc = spawn(tryPath, ['--version'], { stdio: 'pipe' });
+        let version = '';
+        proc.stdout?.on('data', (d) => { version += d.toString(); });
+        proc.on('error', () => resolve(null));
+        proc.on('close', (code) => {
+          resolve(code === 0 ? version.trim() : null);
+        });
+      });
+      
+      if (result) {
+        console.log(`[yt-dlp] Found at ${tryPath} (version ${result})`);
+        ytdlpPath = tryPath;
+        return ytdlpPath;
+      }
+    } catch {
+      continue;
+    }
+  }
+  
+  console.log('[yt-dlp] Not found in any known location');
+  ytdlpPath = null;
+  return null;
+}
+
+/**
+ * Get stream URL using yt-dlp (fallback when YouTube.js fails)
+ * @param {string} videoId - YouTube video ID
+ * @returns {Promise<{url: string, headers: object}|null>}
+ */
+async function getStreamURLWithYtdlp(videoId) {
+  const ytdlp = await findYtdlp();
+  if (!ytdlp) {
+    console.log('[yt-dlp] Not installed, cannot use as fallback');
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    console.log(`[yt-dlp] Trying to get URL for ${videoId}...`);
+    
+    const args = [
+      '-f', 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
+      '-g',  // Get URL only
+      '--no-warnings',
+      '--no-playlist',
+      `https://www.youtube.com/watch?v=${videoId}`
+    ];
+    
+    // Add cookies if available (try multiple formats)
+    const txtCookiePath = path.join(process.cwd(), 'youtube-cookies.txt');
+    const jsonCookiePath = path.join(process.cwd(), 'youtube-cookies.json');
+    
+    if (fs.existsSync(txtCookiePath)) {
+      // Netscape format - yt-dlp native support
+      args.unshift('--cookies', txtCookiePath);
+      console.log('[yt-dlp] Using cookies from youtube-cookies.txt');
+    } else if (fs.existsSync(jsonCookiePath)) {
+      // JSON format - convert to cookie header for yt-dlp
+      try {
+        const cookies = JSON.parse(fs.readFileSync(jsonCookiePath, 'utf8'));
+        if (Array.isArray(cookies) && cookies.length > 0) {
+          const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+          args.unshift('--add-header', `Cookie:${cookieStr}`);
+          console.log('[yt-dlp] Using cookies from youtube-cookies.json');
+        }
+      } catch (e) {
+        console.warn('[yt-dlp] Failed to parse youtube-cookies.json:', e.message);
+      }
+    }
+    
+    const proc = spawn(ytdlp, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    
+    let stdout = '';
+    let stderr = '';
+    
+    proc.stdout.on('data', (data) => { stdout += data.toString(); });
+    proc.stderr.on('data', (data) => { stderr += data.toString(); });
+    
+    proc.on('close', (code) => {
+      if (code === 0 && stdout.trim()) {
+        const url = stdout.trim().split('\n')[0];
+        console.log('[yt-dlp] Successfully got stream URL');
+        resolve({ 
+          url, 
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.youtube.com/'
+          }
+        });
+      } else {
+        console.warn(`[yt-dlp] Failed: ${stderr.trim() || 'Unknown error'}`);
+        resolve(null);
+      }
+    });
+    
+    proc.on('error', (err) => {
+      console.warn(`[yt-dlp] Process error: ${err.message}`);
+      resolve(null);
+    });
+    
+    // Timeout after 15 seconds
+    setTimeout(() => {
+      proc.kill();
+      resolve(null);
+    }, 15000);
+  });
+}
+
 class YouTubeJsPlugin extends PlayableExtractorPlugin {
   constructor(options = {}) {
     super();
@@ -317,17 +533,19 @@ class YouTubeJsPlugin extends PlayableExtractorPlugin {
     const yt = await getInnertube();
     const videoId = extractVideoId(song.url) || song.id;
     
-    // Try multiple InnerTube clients - prioritize embedded/web clients that don't require
-    // specific User-Agent headers (ANDROID/IOS URLs get 403 without proper UA)
-    // WEB client uses SABR now, so we use embedded players and TV clients
+    // Try multiple InnerTube clients
+    // Include IOS as fallback since it often works when others fail
     const clientsToTry = [
-      'WEB_EMBEDDED',           // Embedded web player - most permissive
-      'TVHTML5_SIMPLY_EMBEDDED_PLAYER', // TV embedded - good for restricted videos
-      'TV',                     // TV client - requires auth for some videos
-      'WEB_CREATOR',            // YouTube Studio client
+      'IOS',                     // iOS app - often most reliable
+      'WEB_EMBEDDED',            // Embedded web player
+      'TVHTML5_SIMPLY_EMBEDDED_PLAYER', // TV embedded
+      'TV',                      // TV client
+      'ANDROID',                 // Android app - fallback
     ];
     
     let lastError = null;
+    let lastUrl = null;
+    let lastClient = null;
     
     for (const client of clientsToTry) {
       try {
@@ -374,7 +592,28 @@ class YouTubeJsPlugin extends PlayableExtractorPlugin {
         }
         
         if (url) {
-          return url;
+          // Verify the URL works before returning
+          const clientConfig = CLIENT_CONFIGS[client] || {};
+          const headers = clientConfig.headers || {};
+          
+          console.log(`[YouTube.js] Verifying ${client} URL...`);
+          const isValid = await verifyStreamURL(url, headers);
+          
+          if (isValid) {
+            console.log(`[YouTube.js] ${client} URL verified successfully`);
+            
+            // Store the client used so we know which headers FFmpeg needs
+            // This info can be used by DisTube if it supports custom headers
+            song._youtubeClient = client;
+            song._streamHeaders = headers;
+            
+            return url;
+          } else {
+            console.warn(`[YouTube.js] ${client} URL verification failed (403/blocked)`);
+            lastUrl = url;
+            lastClient = client;
+            continue;
+          }
         }
       } catch (err) {
         console.warn(`[YouTube.js] ${client} client failed:`, err.message);
@@ -383,7 +622,23 @@ class YouTubeJsPlugin extends PlayableExtractorPlugin {
       }
     }
     
-    throw new Error(`[YouTube.js] All clients failed to get stream URL. Last error: ${lastError?.message || 'Unknown'}`);
+    // Try yt-dlp as fallback before giving up
+    console.log('[YouTube.js] All InnerTube clients failed, trying yt-dlp fallback...');
+    const ytdlpResult = await getStreamURLWithYtdlp(videoId);
+    if (ytdlpResult) {
+      song._youtubeClient = 'yt-dlp';
+      song._streamHeaders = ytdlpResult.headers;
+      return ytdlpResult.url;
+    }
+    
+    // If we have a URL but it failed verification, return it anyway as a last resort
+    // FFmpeg might still work with it in some cases
+    if (lastUrl) {
+      console.warn(`[YouTube.js] Returning unverified URL from ${lastClient} as last resort`);
+      return lastUrl;
+    }
+    
+    throw new Error(`[YouTube.js] All methods failed to get stream URL. Last error: ${lastError?.message || 'Unknown'}. Consider installing yt-dlp: pip install yt-dlp`);
   }
 
   async getRelatedSongs(song) {

@@ -37,12 +37,28 @@ function initialize(client) {
   plugins.push(new YouTubeJsPlugin());
   logger.info('DisTube', 'Using YouTube.js (InnerTube API) for YouTube');
 
-  // Create DisTube instance
+  // Create DisTube instance with custom FFmpeg args
+  // Add headers to help with YouTube's URL validation
   distube = new DisTube(client, {
     plugins,
     emitNewSongOnly: true,
     emitAddSongWhenCreatingQueue: false,
-    emitAddListWhenCreatingQueue: false
+    emitAddListWhenCreatingQueue: false,
+    ffmpeg: {
+      args: {
+        global: {},
+        input: {
+          // HTTP headers for YouTube URLs - prevents 403 errors
+          // These headers make FFmpeg's request look like it comes from a browser/app
+          headers: [
+            'User-Agent: com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+            'Origin: https://www.youtube.com',
+            'Referer: https://www.youtube.com/'
+          ].join('\r\n')
+        },
+        output: {}
+      }
+    }
   });
 
   // Increase max listeners to avoid warning
