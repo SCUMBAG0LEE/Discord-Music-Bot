@@ -1,5 +1,6 @@
 const play = require('play-dl');
 const youtubeService = require('./youtube');
+const { logger } = require('../utils/logger');
 
 /**
  * Initialize Spotify with credentials
@@ -9,7 +10,7 @@ async function initialize() {
   try {
     // Check if Spotify credentials are configured
     if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
-      console.log('⚠ Spotify credentials not configured - Spotify support disabled');
+      logger.warn('Spotify', 'Credentials not configured - Spotify support disabled');
       return;
     }
 
@@ -23,9 +24,9 @@ async function initialize() {
       }
     });
     
-    console.log('✓ Spotify initialized');
+    logger.success('Spotify', 'Initialized successfully');
   } catch (err) {
-    console.error('✗ Failed to initialize Spotify:', err.message);
+    logger.error('Spotify', 'Failed to initialize', err);
   }
 }
 
@@ -59,16 +60,20 @@ function getResourceType(url) {
  */
 async function getTrack(url, requesterId) {
   try {
+    logger.debug('Spotify', `Fetching track: ${url}`);
     const spotifyData = await play.spotify(url);
     
     if (spotifyData.type !== 'track') {
       return { song: null, error: 'Invalid Spotify track URL' };
     }
     
+    logger.debug('Spotify', `Track: "${spotifyData.name}" by ${spotifyData.artists?.map(a => a.name).join(', ')}`);
+    
     // Search YouTube for this track
     const song = await youtubeService.searchFromSpotifyTrack(spotifyData, requesterId);
     
     if (!song) {
+      logger.warn('Spotify', `No YouTube match found for: ${spotifyData.name}`);
       return { song: null, error: 'Could not find a matching YouTube video for this track.' };
     }
     
@@ -78,9 +83,10 @@ async function getTrack(url, requesterId) {
     song.spotifyTitle = spotifyData.name;
     song.spotifyArtists = spotifyData.artists?.map(a => a.name) || [];
     
+    logger.info('Spotify', `Resolved: "${spotifyData.name}" → "${song.title}"`);
     return { song, error: null };
   } catch (err) {
-    console.error('Spotify getTrack error:', err.message);
+    logger.error('Spotify', `getTrack failed for: ${url}`, err);
     return { song: null, error: 'Error fetching Spotify track details.' };
   }
 }
@@ -93,6 +99,7 @@ async function getTrack(url, requesterId) {
  */
 async function getPlaylist(url, requesterId) {
   try {
+    logger.debug('Spotify', `Fetching playlist: ${url}`);
     const spotifyData = await play.spotify(url);
     
     if (spotifyData.type !== 'playlist') {
@@ -101,6 +108,7 @@ async function getPlaylist(url, requesterId) {
     
     // Get all tracks from playlist
     const tracks = await spotifyData.all_tracks();
+    logger.info('Spotify', `Playlist "${spotifyData.name}" has ${tracks.length} tracks`);
     
     const songs = [];
     for (const track of tracks) {
@@ -113,6 +121,8 @@ async function getPlaylist(url, requesterId) {
         songs.push(song);
       }
     }
+    
+    logger.info('Spotify', `Resolved ${songs.length}/${tracks.length} tracks from playlist`);
     
     if (songs.length === 0) {
       return { songs: [], name: spotifyData.name, error: 'No playable tracks found in this Spotify playlist.' };

@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { logger } = require('./utils/logger');
 
 // Services
 const spotifyService = require('./services/spotify');
@@ -93,14 +94,14 @@ client.on('interactionCreate', async interaction => {
   const command = client.commands.get(interaction.commandName);
 
   if (!command) {
-    console.warn(`Unknown command: ${interaction.commandName}`);
+    logger.warn('Bot', `Unknown command attempted: ${interaction.commandName}`);
     return interaction.reply({ content: 'Unknown command.', ephemeral: true });
   }
 
   try {
     await command.execute(interaction, client);
   } catch (error) {
-    console.error(`Error executing ${interaction.commandName}:`, error);
+    logger.error('Bot', `Error executing /${interaction.commandName}`, error);
     
     const errorMessage = { content: 'There was an error executing this command.', ephemeral: true };
     
@@ -123,32 +124,32 @@ client.on('messageCreate', message => {
 
 // Error handling
 client.on('error', error => {
-  console.error('Discord client error:', error);
+  logger.error('Discord', 'Client error', error);
 });
 
 process.on('unhandledRejection', error => {
-  console.error('Unhandled promise rejection:', error);
+  logger.error('Process', 'Unhandled promise rejection', error);
 });
 
 // Initialize and start
 async function start() {
-  console.log('🎵 Discord Music Bot Starting...\n');
+  logger.info('Bot', '🎵 Discord Music Bot Starting...');
   
   // Load commands
-  console.log('Loading commands...');
+  logger.info('Bot', 'Loading commands...');
   loadCommands();
-  console.log(`✓ Loaded ${client.commands.size} commands\n`);
+  logger.success('Bot', `Loaded ${client.commands.size} commands`);
   
   // Initialize Spotify
-  console.log('Initializing Spotify...');
+  logger.info('Bot', 'Initializing Spotify...');
   await spotifyService.initialize();
   
   // Login to Discord
-  console.log('Connecting to Discord...');
+  logger.info('Bot', 'Connecting to Discord...');
   await client.login(process.env.BOT_TOKEN);
 }
 
 start().catch(error => {
-  console.error('Failed to start bot:', error);
+  logger.error('Bot', 'Failed to start', error);
   process.exit(1);
 });

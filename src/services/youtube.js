@@ -1,4 +1,5 @@
 const play = require('play-dl');
+const { logger } = require('../utils/logger');
 
 /**
  * Check if URL is any valid YouTube URL (video or playlist)
@@ -44,21 +45,25 @@ async function getVideo(url, requesterId) {
   try {
     // Normalize URL first to handle youtu.be and tracking params
     const normalizedUrl = normalizeUrl(url);
+    logger.debug('YouTube', `getVideo: "${url}" → normalized: "${normalizedUrl}"`);
+    
     const info = await play.video_basic_info(normalizedUrl);
     const details = info.video_details;
     
     const song = {
       title: details.title,
-      url: details.url || normalizedUrl,
+      url: normalizedUrl, // Always use normalized URL to avoid streaming issues
       duration: details.durationInSec || 0,
       requester: requesterId,
       source: 'youtube',
-      sourceUrl: details.url || normalizedUrl,
+      sourceUrl: normalizedUrl,
       thumbnail: details.thumbnails?.[0]?.url || null
     };
+    
+    logger.info('YouTube', `Fetched video: "${song.title}" (${song.duration}s)`);
     return { song, error: null };
   } catch (err) {
-    console.error('YouTube getVideo error:', err.message);
+    logger.error('YouTube', `getVideo failed for: ${url}`, err);
     return { song: null, error: 'Error fetching video details.' };
   }
 }
@@ -227,17 +232,25 @@ async function getStreamWithType(url, seekTime = 0) {
   // Normalize the URL to avoid issues with short URLs and tracking params
   const normalizedUrl = normalizeUrl(url);
   
-  const options = {};
+  logger.debug('YouTube', `getStreamWithType: input="${url}"`);
+  logger.debug('YouTube', `getStreamWithType: normalized="${normalizedUrl}", seekTime=${seekTime}`);
   
-  if (seekTime > 0) {
-    options.seek = seekTime;
+  try {
+    // Only pass options if we need to seek, some versions of play-dl don't like empty options
+    const streamData = seekTime > 0 
+      ? await play.stream(normalizedUrl, { seek: seekTime })
+      : await play.stream(normalizedUrl);
+    
+    logger.stream('youtube', normalizedUrl, `success (type: ${streamData.type})`);
+    
+    return {
+      stream: streamData.stream,
+      type: streamData.type
+    };
+  } catch (err) {
+    logger.error('YouTube', `Stream creation failed for: ${normalizedUrl}`, err);
+    throw err;
   }
-  
-  const streamData = await play.stream(normalizedUrl, options);
-  return {
-    stream: streamData.stream,
-    type: streamData.type
-  };
 }
 
 module.exports = {

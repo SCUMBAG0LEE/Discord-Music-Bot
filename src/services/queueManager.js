@@ -1,4 +1,5 @@
 const { joinVoiceChannel, createAudioPlayer } = require('@discordjs/voice');
+const { logger } = require('../utils/logger');
 
 /**
  * Manages music queues for all guilds
@@ -19,6 +20,8 @@ class QueueManager {
     let queue = this.queues.get(guildId);
     
     if (!queue) {
+      logger.voice(guildId, `joining channel: ${voiceChannel.name}`);
+      
       const connection = joinVoiceChannel({
         channelId: voiceChannel.id,
         guildId: voiceChannel.guild.id,
@@ -44,6 +47,7 @@ class QueueManager {
       };
       
       this.queues.set(guildId, queue);
+      logger.queue(guildId, 'created new queue');
     }
     
     // Clear idle timer when queue is accessed
@@ -80,6 +84,7 @@ class QueueManager {
   delete(guildId) {
     const queue = this.queues.get(guildId);
     if (queue) {
+      logger.queue(guildId, 'deleting queue and disconnecting');
       if (queue.idleTimer) {
         clearTimeout(queue.idleTimer);
       }
@@ -87,6 +92,7 @@ class QueueManager {
         queue.connection.destroy();
       } catch (e) {
         // Connection may already be destroyed
+        logger.debug('Queue', `Connection already destroyed for ${guildId}`);
       }
       this.queues.delete(guildId);
     }

@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "debug": "LOG_LEVEL=DEBUG node src/index.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -13,6 +14,7 @@
   "dependencies": {
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.18.0",
+    "chalk": "^4.1.2",
     "discord.js": "^14.19.2",
     "dotenv": "^16.5.0",
     "libsodium-wrappers": "^0.7.15",

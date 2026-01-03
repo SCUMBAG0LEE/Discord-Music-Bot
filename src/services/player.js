@@ -2,6 +2,7 @@ const { createAudioResource, AudioPlayerStatus, StreamType } = require('@discord
 const { queueManager } = require('./queueManager');
 const youtubeService = require('./youtube');
 const play = require('play-dl');
+const { logger } = require('../utils/logger');
 
 /**
  * Get stream for a song based on its source
@@ -10,16 +11,26 @@ const play = require('play-dl');
  * @returns {Promise<{stream: import('stream').Readable, type: string}>}
  */
 async function getStreamForSong(song, seekTime = 0) {
+  logger.debug('Player', `Getting stream for: ${song.title}`, {
+    source: song.source,
+    url: song.url?.substring(0, 80),
+    isStream: song.isStream,
+    seekTime
+  });
+
   // Handle radio/direct streams - use play-dl for arbitrary URLs
   if (song.isStream || song.source === 'stream') {
     // play-dl can handle arbitrary stream URLs
     try {
+      logger.stream('stream', song.url, 'attempting play-dl');
       const streamData = await play.stream(song.url);
+      logger.stream('stream', song.url, 'success');
       return {
         stream: streamData.stream,
         type: streamData.type
       };
-    } catch {
+    } catch (err) {
+      logger.warn('Player', `play-dl stream failed, using fetch fallback: ${err.message}`);
       // Fallback: create resource from URL directly using fetch
       const response = await fetch(song.url);
       return {
@@ -31,7 +42,9 @@ async function getStreamForSong(song, seekTime = 0) {
   
   // Handle SoundCloud
   if (song.source === 'soundcloud') {
+    logger.stream('soundcloud', song.url, 'attempting');
     const streamData = await play.stream(song.url);
+    logger.stream('soundcloud', song.url, 'success');
     return {
       stream: streamData.stream,
       type: streamData.type
@@ -39,6 +52,7 @@ async function getStreamForSong(song, seekTime = 0) {
   }
   
   // Default: YouTube (handles youtube and spotify which are converted to youtube)
+  logger.stream('youtube', song.url, 'attempting');
   return youtubeService.getStreamWithType(song.url, seekTime);
 }
 
@@ -50,10 +64,14 @@ async function getStreamForSong(song, seekTime = 0) {
 async function playSong(guildId, song) {
   const queue = queueManager.get(guildId);
   
-  if (!queue) return;
+  if (!queue) {
+    logger.warn('Player', `No queue found for guild ${guildId}`);
+    return;
+  }
   
   // If no song, set idle timer for auto-disconnect
   if (!song) {
+    logger.player(guildId, 'queue empty, starting idle timer');
     startIdleTimer(guildId);
     return;
   }
@@ -61,9 +79,16 @@ async function playSong(guildId, song) {
   // Clear idle timer since we're playing
   clearIdleTimer(guildId);
   
+  logger.player(guildId, 'playSong', { 
+    title: song.title, 
+    source: song.source, 
+    url: song.url?.substring(0, 80) 
+  });
+  
   try {
     // Get stream based on song source
     const { stream, type } = await getStreamForSong(song);
+    logger.debug('Player', `Stream acquired, type: ${type}`);
     
     const resource = createAudioResource(stream, {
       inputType: type,
@@ -75,10 +100,13 @@ async function playSong(guildId, song) {
     queue.nowPlayingStart = Date.now();
     queue.player.play(resource);
     
+    logger.success('Player', `Now playing: ${song.title}`);
+    
     // Set up event handlers
     setupPlayerEvents(guildId, song);
   } catch (err) {
-    console.error(`Error playing song: ${err.message}`);
+    logger.error('Player', `Error playing song: ${song.title}`, err);
+    logger.debug('Player', 'Song object that failed:', song);
     // Skip to next song on error
     queue.songs.shift();
     playSong(guildId, queue.songs[0]);
@@ -103,19 +131,22 @@ function setupPlayerEvents(guildId, song) {
     const currentQueue = queueManager.get(guildId);
     if (!currentQueue) return;
     
+    logger.player(guildId, 'song ended (idle)', { title: song.title });
+    
     // Check if 24/7 mode is enabled
     const is247 = currentQueue.twentyFourSeven;
     
     // Check if voice channel is empty (unless 24/7 mode)
     const humanCount = currentQueue.voiceChannel.members.filter(m => !m.user.bot).size;
     if (humanCount === 0 && !is247) {
-      console.log('Disconnecting: no users in voice channel');
+      logger.voice(guildId, 'disconnecting: no users in voice channel');
       queueManager.delete(guildId);
       return;
     }
     
     // Handle loop or next song
     if (currentQueue.loop) {
+      logger.player(guildId, 'looping song');
       playSong(guildId, song);
     } else {
       currentQueue.songs.shift();
@@ -123,20 +154,25 @@ function setupPlayerEvents(guildId, song) {
       
       // If queue is empty and autoplay is enabled, add related song
       if (currentQueue.songs.length === 0 && currentQueue.autoplay && song.source === 'youtube') {
+        logger.debug('Player', 'Queue empty, autoplay enabled - fetching related song');
         const relatedSong = await getRelatedSong(song, song.requester);
         if (relatedSong) {
           currentQueue.songs.push(relatedSong);
-          console.log(`Autoplay: Added "${relatedSong.title}"`);
+          logger.info('Player', `Autoplay: Added "${relatedSong.title}"`);
         }
       }
       
+      logger.player(guildId, 'playing next song', { 
+        remaining: currentQueue.songs.length,
+        next: currentQueue.songs[0]?.title 
+      });
       playSong(guildId, currentQueue.songs[0]);
     }
   });
   
   // Handle errors
   queue.player.once('error', error => {
-    console.error(`Player error: ${error.message}`);
+    logger.error('Player', `Audio player error in guild ${guildId}`, error);
     const currentQueue = queueManager.get(guildId);
     if (currentQueue) {
       currentQueue.songs.shift();
@@ -154,12 +190,17 @@ function startIdleTimer(guildId) {
   if (!queue) return;
   
   // Don't set idle timer in 24/7 mode
-  if (queue.twentyFourSeven) return;
+  if (queue.twentyFourSeven) {
+    logger.debug('Player', `[${guildId}] 24/7 mode enabled, skipping idle timer`);
+    return;
+  }
   
   // Clear existing timer
   if (queue.idleTimer) {
     clearTimeout(queue.idleTimer);
   }
+  
+  logger.debug('Player', `[${guildId}] Starting 60s idle timer`);
   
   queue.idleTimer = setTimeout(() => {
     const currentQueue = queueManager.get(guildId);
@@ -170,9 +211,9 @@ function startIdleTimer(guildId) {
     
     const humanCount = currentQueue.voiceChannel.members.filter(m => !m.user.bot).size;
     if (humanCount === 0) {
-      console.log('Disconnecting: no users in voice channel');
+      logger.voice(guildId, 'disconnecting: no users in voice channel');
     } else {
-      console.log('Disconnecting: idle for 1 minute');
+      logger.voice(guildId, 'disconnecting: idle for 1 minute');
     }
     
     queueManager.delete(guildId);
