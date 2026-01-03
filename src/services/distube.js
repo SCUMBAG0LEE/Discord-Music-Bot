@@ -14,11 +14,16 @@ let distube = null;
  */
 function initialize(client) {
   // Initialize plugins
-  const plugins = [
-    new SoundCloudPlugin()
-  ];
+  // IMPORTANT: Plugin order matters! The Spotify plugin uses the first available
+  // search plugin to find songs. YouTube should be first for better search results.
+  const plugins = [];
 
-  // Add Spotify plugin if credentials are configured
+  // YouTube.js plugin - uses InnerTube API directly (no external binaries needed)
+  // Added FIRST so Spotify resolves tracks via YouTube (better matches than SoundCloud)
+  plugins.push(new YouTubeJsPlugin());
+  logger.info('DisTube', 'Using YouTube.js (InnerTube API) for YouTube');
+
+  // Add Spotify plugin - will use YouTube for search since it's first
   if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
     plugins.push(new SpotifyPlugin({
       api: {
@@ -27,15 +32,13 @@ function initialize(client) {
         topTracksCountry: process.env.SPOTIFY_MARKET || 'US'
       }
     }));
-    logger.info('DisTube', 'Spotify plugin enabled');
+    logger.info('DisTube', 'Spotify plugin enabled (resolving via YouTube)');
   } else {
     logger.warn('DisTube', 'Spotify credentials not configured - Spotify support disabled');
   }
 
-  // YouTube.js plugin - uses InnerTube API directly (no external binaries needed)
-  // More reliable than ytdl-core and actively maintained
-  plugins.push(new YouTubeJsPlugin());
-  logger.info('DisTube', 'Using YouTube.js (InnerTube API) for YouTube');
+  // SoundCloud plugin - added last, only used for direct SoundCloud URLs
+  plugins.push(new SoundCloudPlugin());
 
   // Create DisTube instance with custom FFmpeg args
   // Add headers to help with YouTube's URL validation
