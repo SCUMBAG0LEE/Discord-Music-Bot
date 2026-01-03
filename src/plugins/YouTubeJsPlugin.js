@@ -11,9 +11,28 @@
  */
 
 const { PlayableExtractorPlugin, Song, Playlist } = require('distube');
-const { Innertube } = require('youtubei.js');
+const { Innertube, Platform } = require('youtubei.js');
 const fs = require('fs');
 const path = require('path');
+
+// Set up custom JavaScript evaluator for deciphering URLs
+// This is required because YouTube.js needs to execute YouTube's obfuscated JS
+Platform.shim.eval = async (data, env) => {
+  const properties = [];
+
+  if (env.n) {
+    properties.push(`n: exportedVars.nFunction("${env.n}")`);
+  }
+
+  if (env.sig) {
+    properties.push(`sig: exportedVars.sigFunction("${env.sig}")`);
+  }
+
+  const code = `${data.output}\nreturn { ${properties.join(', ')} }`;
+
+  // Use Function constructor to evaluate the code safely
+  return new Function(code)();
+};
 
 /** @type {Innertube|null} */
 let innertube = null;
@@ -291,28 +310,17 @@ class YouTubeJsPlugin extends PlayableExtractorPlugin {
       }
     };
     
-    const song = new Song(songData, options);
-    
-    // Cache streaming data if available
-    if (includeStreamUrl && info.streaming_data) {
-      song._ytjsStreamingData = info.streaming_data;
-    }
-    
-    return song;
+    return new Song(songData, options);
   }
 
   async getStreamURL(song) {
     const yt = await getInnertube();
+    const videoId = extractVideoId(song.url) || song.id;
     
-    // If we have cached streaming data, try to use it
-    let streamingData = song._ytjsStreamingData;
-    
-    // If no cached data or it might be expired, fetch fresh
-    if (!streamingData) {
-      const videoId = extractVideoId(song.url) || song.id;
-      const info = await yt.getBasicInfo(videoId);
-      streamingData = info.streaming_data;
-    }
+    // Use TV client which provides signature_cipher URLs that can be deciphered
+    // The default WEB client now uses SABR which doesn't provide separate streaming URLs
+    const info = await yt.getInfo(videoId, { client: 'TV' });
+    const streamingData = info.streaming_data;
     
     if (!streamingData) {
       throw new Error('[YouTube.js] No streaming data available');
@@ -323,11 +331,31 @@ class YouTubeJsPlugin extends PlayableExtractorPlugin {
       throw new Error('[YouTube.js] No suitable audio format found');
     }
     
-    // Get the deciphered URL
-    const url = format.decipher(yt.session.player);
+    // Try to get the URL - format may already have a direct URL or need deciphering
+    let url;
+    
+    // First check if format already has a direct URL
+    if (format.url) {
+      url = format.url;
+    } 
+    // If not, try to decipher it using the TV client's signature_cipher
+    else if (format.signature_cipher || format.cipher) {
+      try {
+        // decipher() is now async in newer versions of YouTube.js
+        url = await format.decipher(yt.session.player);
+      } catch (err) {
+        console.warn('[YouTube.js] Decipher failed:', err.message);
+        // Try without await for older versions
+        try {
+          url = format.decipher(yt.session.player);
+        } catch (syncErr) {
+          console.warn('[YouTube.js] Sync decipher also failed:', syncErr.message);
+        }
+      }
+    }
     
     if (!url) {
-      throw new Error('[YouTube.js] Failed to decipher stream URL');
+      throw new Error('[YouTube.js] Failed to get stream URL - no direct URL or decipher failed');
     }
     
     return url;

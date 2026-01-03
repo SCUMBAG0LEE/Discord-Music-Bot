@@ -119,6 +119,11 @@ This bot uses **[YouTube.js](https://github.com/LuanRT/YouTube.js)** for YouTube
 - Direct access to YouTube's internal API
 - More reliable than ytdl-core
 
+**Technical Notes (v4.3.1):**
+- Uses the **TV InnerTube client** for streaming URLs (WEB client switched to SABR which doesn't provide separate URLs)
+- Implements custom JavaScript evaluator for URL signature deciphering
+- Supports cookie-based authentication for age-restricted content (see below)
+
 ### Discord Bot Setup
 
 1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications)
