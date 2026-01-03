@@ -42,16 +42,18 @@ function isPlaylistUrl(url) {
  */
 async function getVideo(url, requesterId) {
   try {
-    const info = await play.video_basic_info(url);
+    // Normalize URL first to handle youtu.be and tracking params
+    const normalizedUrl = normalizeUrl(url);
+    const info = await play.video_basic_info(normalizedUrl);
     const details = info.video_details;
     
     const song = {
       title: details.title,
-      url: details.url,
+      url: details.url || normalizedUrl,
       duration: details.durationInSec || 0,
       requester: requesterId,
       source: 'youtube',
-      sourceUrl: details.url,
+      sourceUrl: details.url || normalizedUrl,
       thumbnail: details.thumbnails?.[0]?.url || null
     };
     return { song, error: null };
@@ -185,19 +187,53 @@ async function createStream(url) {
 }
 
 /**
+ * Extract video ID from various YouTube URL formats
+ * @param {string} url
+ * @returns {string|null}
+ */
+function extractVideoId(url) {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Normalize YouTube URL to standard format
+ * @param {string} url
+ * @returns {string}
+ */
+function normalizeUrl(url) {
+  const videoId = extractVideoId(url);
+  if (videoId) {
+    return `https://www.youtube.com/watch?v=${videoId}`;
+  }
+  return url;
+}
+
+/**
  * Get stream type for audio resource creation
  * @param {string} url - YouTube video URL  
  * @param {number} [seekTime=0] - Time in seconds to start from
  * @returns {Promise<{stream: import('stream').Readable, type: string}>}
  */
 async function getStreamWithType(url, seekTime = 0) {
+  // Normalize the URL to avoid issues with short URLs and tracking params
+  const normalizedUrl = normalizeUrl(url);
+  
   const options = {};
   
   if (seekTime > 0) {
     options.seek = seekTime;
   }
   
-  const streamData = await play.stream(url, options);
+  const streamData = await play.stream(normalizedUrl, options);
   return {
     stream: streamData.stream,
     type: streamData.type
