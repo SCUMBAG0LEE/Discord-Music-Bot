@@ -3,10 +3,7 @@ const { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType } = re
 const fs = require('fs');
 const path = require('path');
 const { logger } = require('./utils/logger');
-
-// Services
-const spotifyService = require('./services/spotify');
-const youtubeService = require('./services/youtube');
+const distubeService = require('./services/distube');
 
 // Initialize Discord client with required intents
 const client = new Client({
@@ -20,6 +17,9 @@ const client = new Client({
 
 // Command collection
 client.commands = new Collection();
+
+// DisTube will be attached to client after initialization
+client.distube = null;
 
 /**
  * Load all commands from the commands directory
@@ -134,20 +134,16 @@ process.on('unhandledRejection', error => {
 
 // Initialize and start
 async function start() {
-  logger.info('Bot', '🎵 Discord Music Bot Starting...');
+  logger.info('Bot', '🎵 Discord Music Bot v4.1.0 (DisTube) Starting...');
   
   // Load commands
   logger.info('Bot', 'Loading commands...');
   loadCommands();
   logger.success('Bot', `Loaded ${client.commands.size} commands`);
   
-  // Initialize YouTube
-  logger.info('Bot', 'Initializing YouTube...');
-  await youtubeService.initialize();
-  
-  // Initialize Spotify
-  logger.info('Bot', 'Initializing Spotify...');
-  await spotifyService.initialize();
+  // Initialize DisTube (after commands load, before login)
+  logger.info('Bot', 'Initializing DisTube...');
+  client.distube = distubeService.initialize(client);
   
   // Login to Discord
   logger.info('Bot', 'Connecting to Discord...');

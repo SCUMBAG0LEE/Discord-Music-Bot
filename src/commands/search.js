@@ -1,7 +1,4 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js');
-const { queueManager } = require('../services/queueManager');
-const player = require('../services/player');
-const youtubeService = require('../services/youtube');
 const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
 const { truncate } = require('../utils/formatters');
 
@@ -15,7 +12,7 @@ module.exports = {
         .setRequired(true)
     ),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     if (!isGuildInteraction(interaction)) {
       return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
     }
@@ -28,15 +25,22 @@ module.exports = {
     await interaction.deferReply();
 
     const query = interaction.options.getString('query');
-    const results = await youtubeService.search(query, 5);
+    
+    // Use DisTube search
+    let results;
+    try {
+      results = await client.distube.search(query, { limit: 5 });
+    } catch (err) {
+      return interaction.editReply({ content: 'Search failed: ' + err.message });
+    }
 
     if (!results.length) {
       return interaction.editReply({ content: 'No results found.' });
     }
 
     const options = results.map((video, index) => ({
-      label: truncate(video.title, 100),
-      description: truncate(video.author || 'Unknown', 100),
+      label: truncate(video.name, 100),
+      description: truncate(video.uploader?.name || 'Unknown', 100),
       value: index.toString(),
     }));
 
@@ -52,7 +56,7 @@ module.exports = {
     const message = await interaction.fetchReply();
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
-      time: 15000,
+      time: 30000,
     });
 
     collector.on('collect', async i => {
@@ -61,32 +65,21 @@ module.exports = {
       }
 
       const selected = results[parseInt(i.values[0])];
-      const song = {
-        title: selected.title,
-        url: selected.url,
-        duration: selected.duration || 0,
-        requester: interaction.user.id,
-        source: 'youtube',
-        sourceUrl: selected.url,
-        thumbnail: selected.thumbnail || null
-      };
-
-      const queue = queueManager.getOrCreate(interaction.guildId, voiceChannel);
-      const wasEmpty = queue.songs.length === 0;
       
-      queueManager.addSongs(interaction.guildId, song);
-
-      if (wasEmpty) {
-        player.playSong(interaction.guildId, song);
-        await i.update({ content: `Now playing: **${song.title}**`, components: [] });
-      } else {
-        await i.update({ content: `Added to queue: **${song.title}**`, components: [] });
+      try {
+        await client.distube.play(voiceChannel, selected, {
+          textChannel: interaction.channel,
+          member: interaction.member
+        });
+        await i.update({ content: '▶️ Playing: **' + selected.name + '**', components: [] });
+      } catch (err) {
+        await i.update({ content: '❌ Failed to play: ' + err.message, components: [] });
       }
     });
 
     collector.on('end', async collected => {
       if (collected.size === 0) {
-        await interaction.editReply({ content: 'No selection made, please try again.', components: [] });
+        await interaction.editReply({ content: '⏱️ No selection made, please try again.', components: [] }).catch(() => {});
       }
     });
   }

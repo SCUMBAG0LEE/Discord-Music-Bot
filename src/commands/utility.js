@@ -9,7 +9,7 @@ const commands = {
       .setName('help')
       .setDescription('Show help for available commands.'),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       const helpEmbed = {
         color: 0x5865F2,
         title: '🎵 Music Bot Commands',
@@ -21,12 +21,12 @@ const commands = {
           },
           {
             name: '⏯️ Playback Control',
-            value: '`/pause` `/resume` `/stop`\n`/volume` - Set volume (0-5)\n`/seek` - Jump to timestamp\n`/replay` - Restart song',
+            value: '`/pause` `/resume` `/stop`\n`/volume` - Set volume (0-200)\n`/seek` - Jump to timestamp\n`/replay` - Restart song',
             inline: true
           },
           {
             name: '⏭️ Skipping',
-            value: '`/skip` - Force skip (DJ)\n`/voteskip` - Vote to skip\n`/jump` - Jump to position',
+            value: '`/skip` - Force skip (DJ)\n`/voteskip` - Vote to skip\n`/previous` - Previous song\n`/jump` - Jump to position',
             inline: true
           },
           {
@@ -36,12 +36,12 @@ const commands = {
           },
           {
             name: '💾 Playlists',
-            value: '`/savelist` - Save queue\n`/loadlist` - Load playlist\n`/playlists` - Your playlists\n`/deletelist` - Delete playlist',
+            value: '`/savelist` - Save queue\n`/loadlist` - Load playlist\n`/playlists` - Your playlists\n`/appendlist` - Add to playlist',
             inline: true
           },
           {
-            name: '⚙️ Settings',
-            value: '`/loop` - Toggle loop\n`/autoplay` - Auto-queue songs\n`/247` - Stay in channel',
+            name: '⚙️ Settings & Effects',
+            value: '`/loop` - Toggle loop\n`/autoplay` - Auto-queue songs\n`/247` - Stay in channel\n`/filters` - Audio effects',
             inline: true
           }
         ],

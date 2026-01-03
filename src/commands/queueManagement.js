@@ -1,7 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { queueManager } = require('../services/queueManager');
-const player = require('../services/player');
-const { isGuildInteraction } = require('../utils/permissions');
+const { isGuildInteraction, isDJ } = require('../utils/permissions');
 
 const commands = {
   // Shuffle
@@ -10,18 +8,22 @@ const commands = {
       .setName('shuffle')
       .setDescription('Shuffle the queue (except the current song).'),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      const queue = queueManager.get(interaction.guildId);
+      const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || queue.songs.length < 2) {
         return interaction.reply({ content: 'Not enough songs in the queue to shuffle.' });
       }
 
-      queueManager.shuffle(interaction.guildId);
-      return interaction.reply('🔀 Queue shuffled.');
+      try {
+        queue.shuffle();
+        return interaction.reply('🔀 Queue shuffled! (' + (queue.songs.length - 1) + ' songs)');
+      } catch (err) {
+        return interaction.reply({ content: '❌ Failed to shuffle: ' + err.message, ephemeral: true });
+      }
     }
   },
 
@@ -31,18 +33,28 @@ const commands = {
       .setName('clear')
       .setDescription('Clear the queue (except the currently playing song).'),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      const queue = queueManager.get(interaction.guildId);
+      const queue = client.distube.getQueue(interaction.guildId);
       if (!queue) {
         return interaction.reply({ content: 'There is no active queue.' });
       }
 
-      queueManager.clearQueue(interaction.guildId);
-      return interaction.reply('🗑️ Cleared the queue (except the currently playing song).');
+      // Check permission for clearing
+      if (!isDJ(interaction)) {
+        return interaction.reply({ content: 'Only DJs can clear the queue.', ephemeral: true });
+      }
+
+      // Keep only the current song (index 0), remove everything else
+      const removedCount = queue.songs.length - 1;
+      if (removedCount > 0) {
+        queue.songs.splice(1);
+        return interaction.reply('🗑️ Cleared **' + removedCount + '** songs from the queue.');
+      }
+      return interaction.reply({ content: 'Queue is already empty (only current song playing).', ephemeral: true });
     }
   },
 
@@ -58,24 +70,32 @@ const commands = {
           .setMinValue(2)
       ),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      const queue = queueManager.get(interaction.guildId);
+      const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || queue.songs.length < 2) {
         return interaction.reply({ content: 'No songs available to remove.' });
       }
 
       const index = interaction.options.getInteger('index');
       if (index > queue.songs.length) {
-        return interaction.reply({ content: `Invalid index. Queue only has ${queue.songs.length} songs.`, ephemeral: true });
+        return interaction.reply({ content: 'Invalid index. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
       }
 
-      const removed = queueManager.removeSong(interaction.guildId, index - 1);
+      const songToRemove = queue.songs[index - 1];
+      
+      // Check permissions: requester of the song being removed, or DJ
+      const isRequester = songToRemove.user && songToRemove.user.id === interaction.user.id;
+      if (!isRequester && !isDJ(interaction)) {
+        return interaction.reply({ content: 'You can only remove songs you requested.', ephemeral: true });
+      }
+
+      const removed = queue.songs.splice(index - 1, 1)[0];
       if (removed) {
-        return interaction.reply(`🗑️ Removed **${removed.title}** from the queue.`);
+        return interaction.reply('🗑️ Removed **' + removed.name + '** from the queue.');
       }
       return interaction.reply({ content: 'Could not remove song.', ephemeral: true });
     }
@@ -99,12 +119,12 @@ const commands = {
           .setMinValue(2)
       ),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      const queue = queueManager.get(interaction.guildId);
+      const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || queue.songs.length < 3) {
         return interaction.reply({ content: 'Not enough songs in the queue to move.' });
       }
@@ -113,14 +133,14 @@ const commands = {
       const to = interaction.options.getInteger('to');
 
       if (from > queue.songs.length || to > queue.songs.length) {
-        return interaction.reply({ content: `Invalid positions. Queue only has ${queue.songs.length} songs.`, ephemeral: true });
+        return interaction.reply({ content: 'Invalid positions. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
       }
 
-      const moved = queueManager.moveSong(interaction.guildId, from - 1, to - 1);
-      if (moved) {
-        return interaction.reply(`↕️ Moved **${moved.title}** from position ${from} to ${to}.`);
-      }
-      return interaction.reply({ content: 'Could not move song.', ephemeral: true });
+      // Remove from old position and insert at new position
+      const [song] = queue.songs.splice(from - 1, 1);
+      queue.songs.splice(to - 1, 0, song);
+      
+      return interaction.reply('↔️ Moved **' + song.name + '** from position ' + from + ' to ' + to + '.');
     }
   },
 
@@ -136,26 +156,67 @@ const commands = {
           .setMinValue(2)
       ),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      const queue = queueManager.get(interaction.guildId);
+      const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || queue.songs.length < 2) {
         return interaction.reply({ content: 'There are no songs to jump to.' });
       }
 
       const index = interaction.options.getInteger('index');
       if (index > queue.songs.length) {
-        return interaction.reply({ content: `Invalid index. Queue only has ${queue.songs.length} songs.`, ephemeral: true });
+        return interaction.reply({ content: 'Invalid index. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
       }
 
       const targetSong = queue.songs[index - 1];
-      queueManager.jumpTo(interaction.guildId, index - 1);
-      player.skip(interaction.guildId);
       
-      return interaction.reply(`⏭️ Jumping to **${targetSong.title}**.`);
+      try {
+        await queue.jump(index - 1);
+        return interaction.reply('⏭️ Jumping to **' + targetSong.name + '**.');
+      } catch (err) {
+        return interaction.reply({ content: '❌ Failed to jump: ' + err.message, ephemeral: true });
+      }
+    }
+  },
+
+  // Skip To (alias for jump)
+  skipto: {
+    data: new SlashCommandBuilder()
+      .setName('skipto')
+      .setDescription('Skip to a specific song in the queue (alias for /jump).')
+      .addIntegerOption(option =>
+        option.setName('position')
+          .setDescription('Position in queue to skip to')
+          .setRequired(true)
+          .setMinValue(2)
+      ),
+
+    async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
+      const queue = client.distube.getQueue(interaction.guildId);
+      if (!queue || queue.songs.length < 2) {
+        return interaction.reply({ content: 'There are no songs to skip to.' });
+      }
+
+      const position = interaction.options.getInteger('position');
+      if (position > queue.songs.length) {
+        return interaction.reply({ content: 'Invalid position. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
+      }
+
+      const targetSong = queue.songs[position - 1];
+      
+      try {
+        await queue.jump(position - 1);
+        return interaction.reply('⏭️ Skipped to **' + targetSong.name + '**.');
+      } catch (err) {
+        return interaction.reply({ content: '❌ Failed to skip: ' + err.message, ephemeral: true });
+      }
     }
   }
 };

@@ -7,8 +7,11 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# play-dl auth data (contains OAuth tokens - DO NOT COMMIT)
-.data/
+# Bot data directory (playlists, etc.)
+data/
+
+# YouTube cookies (sensitive - DO NOT COMMIT)
+youtube-cookies.json
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

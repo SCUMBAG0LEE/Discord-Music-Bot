@@ -1,6 +1,4 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { queueManager } = require('../services/queueManager');
-const player = require('../services/player');
 const playlistService = require('../services/playlists');
 const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
 
@@ -17,28 +15,38 @@ const commands = {
           .setMaxLength(32)
       ),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      const queue = queueManager.get(interaction.guildId);
+      const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || queue.songs.length === 0) {
         return interaction.reply({ content: 'The queue is empty. Nothing to save.', ephemeral: true });
       }
 
       const name = interaction.options.getString('name');
+      
+      // Convert DisTube songs to our playlist format
+      const songsToSave = queue.songs.map(song => ({
+        title: song.name,
+        url: song.url,
+        duration: song.duration,
+        source: song.source || 'youtube',
+        thumbnail: song.thumbnail
+      }));
+      
       const { success, error } = await playlistService.savePlaylist(
         interaction.user.id,
         name,
-        queue.songs
+        songsToSave
       );
 
       if (!success) {
-        return interaction.reply({ content: `❌ ${error}`, ephemeral: true });
+        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
       }
 
-      return interaction.reply(`✅ Saved **${queue.songs.length}** songs to playlist **${name}**`);
+      return interaction.reply('💾 Saved **' + queue.songs.length + '** songs to playlist **' + name + '**');
     }
   },
 
@@ -53,7 +61,7 @@ const commands = {
           .setRequired(true)
       ),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
@@ -69,25 +77,20 @@ const commands = {
       const { playlist, error } = await playlistService.loadPlaylist(interaction.user.id, name);
 
       if (error) {
-        return interaction.editReply({ content: `❌ ${error}` });
+        return interaction.editReply({ content: '❌ ' + error });
       }
 
-      // Add requester to songs
-      const songs = playlist.songs.map(song => ({
-        ...song,
-        requester: interaction.user.id
-      }));
-
-      const queue = queueManager.getOrCreate(interaction.guildId, voiceChannel);
-      const wasEmpty = queue.songs.length === 0;
-      
-      queueManager.addSongs(interaction.guildId, songs);
-
-      if (wasEmpty) {
-        player.playSong(interaction.guildId, queue.songs[0]);
-        return interaction.editReply(`▶️ Now playing playlist **${playlist.name}** (${songs.length} songs)`);
-      } else {
-        return interaction.editReply(`📋 Added playlist **${playlist.name}** (${songs.length} songs) to queue`);
+      // Play each song URL in sequence
+      try {
+        for (const song of playlist.songs) {
+          await client.distube.play(voiceChannel, song.url, {
+            textChannel: interaction.channel,
+            member: interaction.member
+          });
+        }
+        return interaction.editReply('📂 Loading playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)');
+      } catch (err) {
+        return interaction.editReply('❌ Failed to load playlist: ' + err.message);
       }
     }
   },
@@ -103,15 +106,15 @@ const commands = {
           .setRequired(true)
       ),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       const name = interaction.options.getString('name');
       const { success, error } = await playlistService.deletePlaylist(interaction.user.id, name);
 
       if (!success) {
-        return interaction.reply({ content: `❌ ${error}`, ephemeral: true });
+        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
       }
 
-      return interaction.reply(`🗑️ Deleted playlist **${name}**`);
+      return interaction.reply('🗑️ Deleted playlist **' + name + '**');
     }
   },
 
@@ -121,29 +124,29 @@ const commands = {
       .setName('playlists')
       .setDescription('List your saved playlists.'),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       const { playlists, error } = await playlistService.listPlaylists(interaction.user.id);
 
       if (error) {
-        return interaction.reply({ content: `❌ ${error}`, ephemeral: true });
+        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
       }
 
       if (playlists.length === 0) {
         return interaction.reply({ 
-          content: 'You have no saved playlists. Use `/savelist` to create one!',
+          content: 'You have no saved playlists. Use /savelist to create one!',
           ephemeral: true 
         });
       }
 
       const embed = new EmbedBuilder()
-        .setTitle('📋 Your Playlists')
+        .setTitle('📚 Your Playlists')
         .setColor(0x5865F2)
         .setDescription(
           playlists.map((p, i) => 
-            `**${i + 1}.** ${p.name} — ${p.songCount} songs`
+            '**' + (i + 1) + '.** ' + p.name + ' — ' + p.songCount + ' songs'
           ).join('\n')
         )
-        .setFooter({ text: `Use /loadlist <name> to play a playlist` });
+        .setFooter({ text: 'Use /loadlist <name> to play a playlist' });
 
       return interaction.reply({ embeds: [embed] });
     }
@@ -160,28 +163,38 @@ const commands = {
           .setRequired(true)
       ),
 
-    async execute(interaction) {
+    async execute(interaction, client) {
       if (!isGuildInteraction(interaction)) {
         return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
       }
 
-      const queue = queueManager.get(interaction.guildId);
+      const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || queue.songs.length === 0) {
         return interaction.reply({ content: 'The queue is empty.', ephemeral: true });
       }
 
       const name = interaction.options.getString('name');
+      
+      // Convert DisTube songs to our playlist format
+      const songsToSave = queue.songs.map(song => ({
+        title: song.name,
+        url: song.url,
+        duration: song.duration,
+        source: song.source || 'youtube',
+        thumbnail: song.thumbnail
+      }));
+      
       const { success, error } = await playlistService.appendToPlaylist(
         interaction.user.id,
         name,
-        queue.songs
+        songsToSave
       );
 
       if (!success) {
-        return interaction.reply({ content: `❌ ${error}`, ephemeral: true });
+        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
       }
 
-      return interaction.reply(`✅ Added **${queue.songs.length}** songs to playlist **${name}**`);
+      return interaction.reply('➕ Added **' + queue.songs.length + '** songs to playlist **' + name + '**');
     }
   }
 };

@@ -1,6 +1,6 @@
 # 🎵 Discord Music Bot
 
-A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio** support, built with discord.js v14 and [play-dl](https://github.com/play-dl/play-dl).
+A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio** support, built with discord.js v14 and [DisTube](https://distube.js.org/).
 
 ## ✨ Features
 
@@ -13,7 +13,7 @@ A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio*
 ### 📋 Queue Management
 - Paginated queue display
 - Shuffle, move, remove, and jump
-- **Loop Mode** — Repeat current song
+- **Loop Mode** — Off, repeat song, or repeat queue
 - **Autoplay** — Automatically queue related songs when queue ends
 
 ### 💾 Saved Playlists
@@ -24,9 +24,11 @@ A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio*
 ### ⏯️ Advanced Playback
 - **Seek** — Jump to any timestamp in a song
 - **Replay** — Restart the current song instantly
+- **Previous** — Play the previous song
 - **24/7 Mode** — Keep the bot in voice channel indefinitely
-- **Volume Control** — 6 preset levels (0-5)
+- **Volume Control** — 0-200% range
 - **Vote Skip** — Democratic skipping
+- **Audio Filters** — Bass boost, nightcore, vaporwave, and more
 
 ### 🎛️ Rich Now Playing
 - Progress bar with elapsed/total time
@@ -42,18 +44,13 @@ src/
 │   ├── play.js              # /play - Multi-platform playback
 │   ├── search.js            # /search - Interactive YouTube search
 │   ├── queue.js             # /queue - Paginated queue display
-│   ├── playback.js          # /pause, /resume, /stop, /volume, /loop, /skip, /voteskip, /np
-│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump
+│   ├── playback.js          # /pause, /resume, /stop, /volume, /loop, /skip, /voteskip, /np, /previous, /filters
+│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump, /skipto
 │   ├── playlists.js         # /savelist, /loadlist, /deletelist, /playlists, /appendlist
 │   ├── advanced.js          # /seek, /replay, /nowplaying, /autoplay, /247, /radio
 │   └── utility.js           # /help, /refreshcommands
 ├── services/
-│   ├── queueManager.js      # Centralized queue state management
-│   ├── player.js            # Audio playback, seek, autoplay handling
-│   ├── youtube.js           # YouTube services via play-dl
-│   ├── spotify.js           # Spotify integration via play-dl
-│   ├── soundcloud.js        # SoundCloud services via play-dl
-│   ├── radio.js             # Radio stream handling & presets
+│   ├── distube.js           # DisTube initialization & event handling
 │   └── playlists.js         # File-based playlist storage
 └── utils/
     ├── formatters.js        # Duration formatting utilities
@@ -64,7 +61,7 @@ src/
 
 ### Prerequisites
 
-- **Node.js 18+** 
+- **Node.js 22+** — Required for DisTube
 - **FFmpeg** — Required for audio processing
   ```bash
   # Ubuntu/Debian
@@ -109,10 +106,29 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `DJ_ROLE_ID` | ❌ | Role ID that can force-skip songs |
 | `SPOTIFY_CLIENT_ID` | ⚠️ | From [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
 | `SPOTIFY_CLIENT_SECRET` | ⚠️ | From Spotify Developer Dashboard |
-| `SPOTIFY_REFRESH_TOKEN` | ❌ | For extended API access (see [play-dl docs](https://github.com/play-dl/play-dl)) |
-| `SPOTIFY_MARKET` | ❌ | Country code for regional results (default: `US`) |
 
 > ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
+
+### YouTube Cookies (Optional)
+
+If you experience YouTube playback issues (age-restricted or rate-limited), you can provide cookies:
+
+1. Install a browser extension like "Get cookies.txt" or "EditThisCookie"
+2. Export cookies from youtube.com in JSON format
+3. Save as `youtube-cookies.json` in the project root
+
+```json
+[
+  {
+    "name": "cookie_name",
+    "value": "cookie_value",
+    "domain": ".youtube.com",
+    "path": "/",
+    "secure": true,
+    "httpOnly": true
+  }
+]
+```
 
 ### Discord Bot Setup
 
@@ -139,9 +155,11 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/stop` | Stop and disconnect |
-| `/volume <0-5>` | Set playback volume |
+| `/volume <0-200>` | Set playback volume (%) |
 | `/seek <timestamp>` | Jump to position (e.g., `1:30`, `90`) |
 | `/replay` | Restart current song |
+| `/previous` | Play the previous song |
+| `/filters <filter>` | Apply audio filters |
 
 ### ⏭️ Skipping
 | Command | Description |
@@ -149,6 +167,7 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `/skip` | Force skip (DJ/requester only) |
 | `/voteskip` | Vote to skip current song |
 | `/jump <position>` | Jump to song at queue position |
+| `/skipto <position>` | Alias for /jump |
 
 ### 📋 Queue Management
 | Command | Description |
@@ -157,7 +176,7 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `/nowplaying` | Rich now playing embed with progress |
 | `/np` | Quick now playing info |
 | `/shuffle` | Shuffle the queue |
-| `/clear` | Clear queue (keeps current song) |
+| `/clear` | Clear queue (DJ only) |
 | `/remove <position>` | Remove song at position |
 | `/move <from> <to>` | Move song in queue |
 
@@ -167,13 +186,13 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `/savelist <name>` | Save current queue as playlist |
 | `/loadlist <name>` | Load and play a saved playlist |
 | `/playlists` | View your saved playlists |
-| `/appendlist <name>` | Add playlist to current queue |
+| `/appendlist <name>` | Add current queue to playlist |
 | `/deletelist <name>` | Delete a saved playlist |
 
 ### ⚙️ Settings
 | Command | Description |
 |---------|-------------|
-| `/loop` | Toggle loop mode for current song |
+| `/loop` | Cycle loop mode (off → song → queue) |
 | `/autoplay` | Toggle autoplay (queue related songs) |
 | `/247` | Toggle 24/7 mode (stay in channel) |
 
@@ -189,13 +208,34 @@ Use `/radio <preset>` with these built-in stations:
 
 | Preset | Genre |
 |--------|-------|
-| `lofi` | Lofi hip hop beats |
+| `lofi` | Lo-Fi hip hop beats |
 | `jazz` | Jazz radio |
 | `classical` | Classical music |
 | `chillhop` | Chillhop music |
 | `synthwave` | Synthwave/retrowave |
+| `rock` | Rock radio |
+| `electronic` | Electronic/Techno |
+| `ambient` | Ambient chill |
+| `hiphop` | Hip hop radio |
 
-Or provide any direct stream URL: `/radio https://stream.example.com/radio.mp3`
+Or provide any direct stream URL: `/play https://stream.example.com/radio.mp3`
+
+## 🎛️ Audio Filters
+
+Use `/filters <filter>` to toggle audio effects:
+
+| Filter | Effect |
+|--------|--------|
+| `bassboost` | Enhanced bass |
+| `nightcore` | Sped up + higher pitch |
+| `vaporwave` | Slowed down + lower pitch |
+| `3d` | 3D spatial audio |
+| `echo` | Echo/reverb effect |
+| `karaoke` | Remove vocals |
+| `surround` | Surround sound |
+| `slow` | Slow playback |
+| `fast` | Fast playback |
+| `clear` | Remove all filters |
 
 ## 🛠️ Development
 
@@ -206,9 +246,25 @@ npm run dev
 
 ## 📜 Version History
 
+- **v4.1.0** — Added audio filters, previous song, skipto command, more radio stations, improved queue display
+- **v4.0.0** — DisTube migration (actively maintained), improved YouTube reliability
 - **v3.0.0** — Multi-platform support (SoundCloud, Radio), saved playlists, autoplay, 24/7 mode, seek, replay
 - **v2.0.0** — Modular architecture, play-dl migration
 - **v1.0.0** — Initial release
+
+## 🔧 Troubleshooting
+
+### YouTube playback issues
+- YouTube may rate-limit or block requests. Try adding YouTube cookies (see Configuration section)
+- Ensure FFmpeg is properly installed: `ffmpeg -version`
+
+### Bot won't connect to voice
+- Ensure the bot has `Connect` and `Speak` permissions
+- Check that no other bot is using the voice channel exclusively
+
+### Commands not showing
+- Run `/refreshcommands` (owner only) or restart the bot
+- Ensure you invited the bot with `applications.commands` scope
 
 ## 📄 License
 
