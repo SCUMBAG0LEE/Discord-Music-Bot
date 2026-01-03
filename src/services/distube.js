@@ -1,31 +1,12 @@
 const { DisTube, Events } = require('distube');
-const { YouTubePlugin } = require('@distube/youtube');
+const { YtDlpPlugin } = require('@distube/yt-dlp');
 const { SpotifyPlugin } = require('@distube/spotify');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
 const { logger } = require('../utils/logger');
-const fs = require('fs');
 const path = require('path');
 
 /** @type {DisTube|null} */
 let distube = null;
-
-/**
- * Load YouTube cookies from file if exists
- * @returns {Array|undefined}
- */
-function loadYouTubeCookies() {
-  const cookiePath = path.join(process.cwd(), 'youtube-cookies.json');
-  if (fs.existsSync(cookiePath)) {
-    try {
-      const cookies = JSON.parse(fs.readFileSync(cookiePath, 'utf8'));
-      logger.info('DisTube', 'Loaded YouTube cookies from youtube-cookies.json');
-      return cookies;
-    } catch (err) {
-      logger.warn('DisTube', 'Failed to load YouTube cookies', err);
-    }
-  }
-  return undefined;
-}
 
 /**
  * Initialize DisTube with the Discord client
@@ -33,13 +14,9 @@ function loadYouTubeCookies() {
  * @returns {DisTube}
  */
 function initialize(client) {
-  const cookies = loadYouTubeCookies();
-
   // Initialize plugins
+  // Using yt-dlp for YouTube as it's more reliable against YouTube's anti-bot measures
   const plugins = [
-    new YouTubePlugin({
-      cookies: cookies
-    }),
     new SoundCloudPlugin()
   ];
 
@@ -56,6 +33,13 @@ function initialize(client) {
   } else {
     logger.warn('DisTube', 'Spotify credentials not configured - Spotify support disabled');
   }
+
+  // YtDlpPlugin should be LAST in the plugins array (as per documentation)
+  // It supports 900+ sites including YouTube
+  plugins.push(new YtDlpPlugin({
+    update: true  // Auto-update yt-dlp binary on startup
+  }));
+  logger.info('DisTube', 'Using yt-dlp for YouTube (more reliable than ytdl-core)');
 
   // Create DisTube instance
   distube = new DisTube(client, {

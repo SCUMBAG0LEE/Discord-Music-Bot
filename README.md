@@ -62,13 +62,14 @@ src/
 ### Prerequisites
 
 - **Node.js 22+** — Required for DisTube
+- **Python 3.7+** — Required for yt-dlp (YouTube support)
 - **FFmpeg** — Required for audio processing
   ```bash
   # Ubuntu/Debian
-  sudo apt install ffmpeg
+  sudo apt install ffmpeg python3
   
   # Windows (via chocolatey)
-  choco install ffmpeg
+  choco install ffmpeg python
   ```
 
 ### Installation
@@ -109,26 +110,20 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 > ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
 
-### YouTube Cookies (Optional)
+### yt-dlp (YouTube Backend)
 
-If you experience YouTube playback issues (age-restricted or rate-limited), you can provide cookies:
+This bot uses **yt-dlp** for YouTube support, which is more reliable than ytdl-core against YouTube's anti-bot measures. The yt-dlp binary is downloaded automatically on first run.
 
-1. Install a browser extension like "Get cookies.txt" or "EditThisCookie"
-2. Export cookies from youtube.com in JSON format
-3. Save as `youtube-cookies.json` in the project root
+**Requirements:**
+- Python 3.7+ must be installed and available in PATH
 
-```json
-[
-  {
-    "name": "cookie_name",
-    "value": "cookie_value",
-    "domain": ".youtube.com",
-    "path": "/",
-    "secure": true,
-    "httpOnly": true
-  }
-]
-```
+**Troubleshooting:**
+- If yt-dlp fails to download, you can manually install it:
+  ```bash
+  pip install yt-dlp
+  # or on Linux
+  sudo apt install yt-dlp
+  ```
 
 ### Discord Bot Setup
 
