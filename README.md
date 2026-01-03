@@ -61,15 +61,14 @@ src/
 
 ### Prerequisites
 
-- **Node.js 22+** — Required for DisTube
-- **Python 3.7+** — Required for yt-dlp (YouTube support)
+- **Node.js 18+** — Required for YouTube.js and DisTube
 - **FFmpeg** — Required for audio processing
   ```bash
   # Ubuntu/Debian
-  sudo apt install ffmpeg python3
+  sudo apt install ffmpeg
   
   # Windows (via chocolatey)
-  choco install ffmpeg python
+  choco install ffmpeg
   ```
 
 ### Installation
@@ -110,20 +109,15 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 > ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
 
-### yt-dlp (YouTube Backend)
+### YouTube.js (YouTube Backend)
 
-This bot uses **yt-dlp** for YouTube support, which is more reliable than ytdl-core against YouTube's anti-bot measures. The yt-dlp binary is downloaded automatically on first run.
+This bot uses **[YouTube.js](https://github.com/LuanRT/YouTube.js)** for YouTube support, which interfaces directly with YouTube's InnerTube API. No external binaries or Python required!
 
-**Requirements:**
-- Python 3.7+ must be installed and available in PATH
-
-**Troubleshooting:**
-- If yt-dlp fails to download, you can manually install it:
-  ```bash
-  pip install yt-dlp
-  # or on Linux
-  sudo apt install yt-dlp
-  ```
+**Benefits:**
+- Pure JavaScript - no Python or external binaries needed
+- Actively maintained with frequent updates
+- Direct access to YouTube's internal API
+- More reliable than ytdl-core
 
 ### Discord Bot Setup
 
@@ -241,6 +235,8 @@ npm run dev
 
 ## 📜 Version History
 
+- **v4.3.0** — Switched to YouTube.js (InnerTube API) - no Python/external binaries needed
+- **v4.2.0** — Switched to custom yt-dlp plugin for better YouTube compatibility
 - **v4.1.0** — Added audio filters, previous song, skipto command, more radio stations, improved queue display
 - **v4.0.0** — DisTube migration (actively maintained), improved YouTube reliability
 - **v3.0.0** — Multi-platform support (SoundCloud, Radio), saved playlists, autoplay, 24/7 mode, seek, replay
@@ -250,7 +246,11 @@ npm run dev
 ## 🔧 Troubleshooting
 
 ### YouTube playback issues
-- YouTube may rate-limit or block requests. Try adding YouTube cookies (see Configuration section)
+- YouTube may rate-limit or block requests. Try adding YouTube cookies:
+  1. Open incognito window, log into YouTube
+  2. Open DevTools (F12) → Network tab
+  3. Copy the `Cookie` header value from any youtube.com request
+  4. Paste into `youtube-cookies.txt` in project root
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
 
 ### Bot won't connect to voice

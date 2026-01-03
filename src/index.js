@@ -134,7 +134,7 @@ process.on('unhandledRejection', error => {
 
 // Initialize and start
 async function start() {
-  logger.info('Bot', '🎵 Discord Music Bot v4.1.0 (DisTube) Starting...');
+  logger.info('Bot', '🎵 Discord Music Bot v4.3.0 (DisTube) Starting...');
   
   // Load commands
   logger.info('Bot', 'Loading commands...');

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js');
 const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
-const { truncate } = require('../utils/formatters');
+const { truncate, formatDuration } = require('../utils/formatters');
+const { getInnertube } = require('../plugins/YouTubeJsPlugin');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -26,21 +27,30 @@ module.exports = {
 
     const query = interaction.options.getString('query');
     
-    // Use DisTube search
+    // Use YouTube.js search
     let results;
     try {
-      results = await client.distube.search(query, { limit: 5 });
+      const yt = await getInnertube();
+      const searchResults = await yt.search(query, { type: 'video' });
+      
+      // Extract video info from results
+      results = (searchResults.videos || []).slice(0, 5).map(video => ({
+        name: video.title?.text || video.title || 'Unknown',
+        url: `https://www.youtube.com/watch?v=${video.id}`,
+        duration: video.duration?.seconds || 0,
+        uploader: { name: video.author?.name || 'Unknown' }
+      }));
     } catch (err) {
-      return interaction.editReply({ content: 'Search failed: ' + err.message });
+      return interaction.editReply({ content: '❌ Search failed: ' + err.message });
     }
 
     if (!results.length) {
-      return interaction.editReply({ content: 'No results found.' });
+      return interaction.editReply({ content: '🔍 No results found.' });
     }
 
     const options = results.map((video, index) => ({
       label: truncate(video.name, 100),
-      description: truncate(video.uploader?.name || 'Unknown', 100),
+      description: truncate(`${video.uploader?.name || 'Unknown'} • ${formatDuration(video.duration)}`, 100),
       value: index.toString(),
     }));
 
@@ -51,7 +61,7 @@ module.exports = {
         .addOptions(options)
     );
 
-    await interaction.editReply({ content: 'Select a video from the list below:', components: [row] });
+    await interaction.editReply({ content: '🔍 Select a video from the list below:', components: [row] });
 
     const message = await interaction.fetchReply();
     const collector = message.createMessageComponentCollector({
@@ -67,7 +77,7 @@ module.exports = {
       const selected = results[parseInt(i.values[0])];
       
       try {
-        await client.distube.play(voiceChannel, selected, {
+        await client.distube.play(voiceChannel, selected.url, {
           textChannel: interaction.channel,
           member: interaction.member
         });

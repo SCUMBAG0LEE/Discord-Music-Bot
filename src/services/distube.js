@@ -1,9 +1,8 @@
 const { DisTube, Events } = require('distube');
-const { YtDlpPlugin } = require('@distube/yt-dlp');
+const { YouTubeJsPlugin } = require('../plugins/YouTubeJsPlugin');
 const { SpotifyPlugin } = require('@distube/spotify');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
 const { logger } = require('../utils/logger');
-const path = require('path');
 
 /** @type {DisTube|null} */
 let distube = null;
@@ -15,7 +14,6 @@ let distube = null;
  */
 function initialize(client) {
   // Initialize plugins
-  // Using yt-dlp for YouTube as it's more reliable against YouTube's anti-bot measures
   const plugins = [
     new SoundCloudPlugin()
   ];
@@ -34,12 +32,10 @@ function initialize(client) {
     logger.warn('DisTube', 'Spotify credentials not configured - Spotify support disabled');
   }
 
-  // YtDlpPlugin should be LAST in the plugins array (as per documentation)
-  // It supports 900+ sites including YouTube
-  plugins.push(new YtDlpPlugin({
-    update: true  // Auto-update yt-dlp binary on startup
-  }));
-  logger.info('DisTube', 'Using yt-dlp for YouTube (more reliable than ytdl-core)');
+  // YouTube.js plugin - uses InnerTube API directly (no external binaries needed)
+  // More reliable than ytdl-core and actively maintained
+  plugins.push(new YouTubeJsPlugin());
+  logger.info('DisTube', 'Using YouTube.js (InnerTube API) for YouTube');
 
   // Create DisTube instance
   distube = new DisTube(client, {
