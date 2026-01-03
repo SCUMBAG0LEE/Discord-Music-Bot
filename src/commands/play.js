@@ -136,6 +136,16 @@ async function handleStream(interaction, query, voiceChannel, guildId, requester
   return addSongsToQueue(interaction, [song], voiceChannel, guildId, label);
 }
 
+async function handleYouTubePlaylist(interaction, query, voiceChannel, guildId, requesterId) {
+  const { songs, name, error } = await youtubeService.getPlaylist(query, requesterId);
+  
+  if (error) {
+    return interaction.editReply({ content: error });
+  }
+  
+  return addSongsToQueue(interaction, songs, voiceChannel, guildId, `YouTube playlist: **${name}**`);
+}
+
 async function handleYouTubeVideoOrSearch(interaction, query, voiceChannel, guildId, requesterId) {
   let result;
   

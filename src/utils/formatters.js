@@ -4,11 +4,14 @@
  * @returns {string} Formatted duration string
  */
 function formatDuration(seconds) {
-  if (!seconds || isNaN(seconds)) return '0:00';
+  if (!seconds || isNaN(seconds) || seconds < 0) return '0:00';
+  
+  // Ensure we're working with integers
+  seconds = Math.floor(seconds);
   
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
+  const secs = Math.floor(seconds % 60);
   
   if (hours > 0) {
     return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;

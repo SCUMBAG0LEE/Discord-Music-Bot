@@ -1,5 +1,3 @@
-const play = require('play-dl');
-
 // Common radio stations (can be extended)
 const PRESET_STATIONS = {
   'lofi': 'https://streams.ilovemusic.de/iloveradio17.mp3',

@@ -29,9 +29,13 @@ const commands = {
 
       const song = queue.songs[0];
       
-      // Can't seek in streams
-      if (song.isStream) {
+      // Can't seek in streams or SoundCloud
+      if (song.isStream || song.source === 'stream') {
         return interaction.reply({ content: 'Cannot seek in a live stream.', ephemeral: true });
+      }
+      
+      if (song.source === 'soundcloud') {
+        return interaction.reply({ content: 'Seeking is not supported for SoundCloud tracks.', ephemeral: true });
       }
 
       const timeStr = interaction.options.getString('time');
@@ -157,6 +161,8 @@ const commands = {
       // Add status indicators
       const status = [];
       if (queue.loop) status.push('🔁 Loop');
+      if (queue.autoplay) status.push('📻 Autoplay');
+      if (queue.twentyFourSeven) status.push('🌙 24/7');
       if (queue.volume !== 1.0) status.push(`🔊 ${Math.round(queue.volume * 100)}%`);
       if (status.length > 0) {
         embed.setFooter({ text: status.join(' • ') });
@@ -322,7 +328,10 @@ function createProgressBar(progress, length = 15) {
   const empty = length - filled;
   const head = '🔘';
   
-  return '▬'.repeat(Math.max(0, filled - 1)) + head + '▬'.repeat(empty);
+  if (filled <= 0) {
+    return head + '▬'.repeat(length - 1);
+  }
+  return '▬'.repeat(filled - 1) + head + '▬'.repeat(Math.max(0, empty));
 }
 
 function getSourceColor(source) {

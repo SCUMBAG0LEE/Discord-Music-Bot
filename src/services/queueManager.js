@@ -228,6 +228,9 @@ class QueueManager {
  * @property {string} requester
  * @property {string} [source]
  * @property {string} [sourceUrl]
+ * @property {string} [thumbnail]
+ * @property {boolean} [isStream]
+ * @property {boolean} [autoplay]
  */
 
 /**
@@ -242,6 +245,8 @@ class QueueManager {
  * @property {NodeJS.Timeout|null} idleTimer
  * @property {import('@discordjs/voice').AudioResource|null} resource
  * @property {number|null} nowPlayingStart
+ * @property {boolean} autoplay
+ * @property {boolean} twentyFourSeven
  */
 
 // Singleton instance

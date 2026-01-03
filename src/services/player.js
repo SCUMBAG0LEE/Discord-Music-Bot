@@ -1,6 +1,46 @@
 const { createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const { queueManager } = require('./queueManager');
 const youtubeService = require('./youtube');
+const play = require('play-dl');
+
+/**
+ * Get stream for a song based on its source
+ * @param {Object} song
+ * @param {number} [seekTime=0]
+ * @returns {Promise<{stream: import('stream').Readable, type: string}>}
+ */
+async function getStreamForSong(song, seekTime = 0) {
+  // Handle radio/direct streams - use play-dl for arbitrary URLs
+  if (song.isStream || song.source === 'stream') {
+    // play-dl can handle arbitrary stream URLs
+    try {
+      const streamData = await play.stream(song.url);
+      return {
+        stream: streamData.stream,
+        type: streamData.type
+      };
+    } catch {
+      // Fallback: create resource from URL directly using fetch
+      const response = await fetch(song.url);
+      return {
+        stream: response.body,
+        type: StreamType.Arbitrary
+      };
+    }
+  }
+  
+  // Handle SoundCloud
+  if (song.source === 'soundcloud') {
+    const streamData = await play.stream(song.url);
+    return {
+      stream: streamData.stream,
+      type: streamData.type
+    };
+  }
+  
+  // Default: YouTube (handles youtube and spotify which are converted to youtube)
+  return youtubeService.getStreamWithType(song.url, seekTime);
+}
 
 /**
  * Play a song from the queue
@@ -22,8 +62,8 @@ async function playSong(guildId, song) {
   clearIdleTimer(guildId);
   
   try {
-    // Get stream with type info from play-dl
-    const { stream, type } = await youtubeService.getStreamWithType(song.url);
+    // Get stream based on song source
+    const { stream, type } = await getStreamForSong(song);
     
     const resource = createAudioResource(stream, {
       inputType: type,
@@ -245,8 +285,13 @@ async function seekTo(guildId, seconds) {
   
   const song = queue.songs[0];
   
+  // Can't seek in streams or SoundCloud (play-dl limitation)
+  if (song.isStream || song.source === 'stream' || song.source === 'soundcloud') {
+    return false;
+  }
+  
   try {
-    // Get new stream starting at the specified time
+    // Get new stream starting at the specified time (only YouTube supports seek)
     const { stream, type } = await youtubeService.getStreamWithType(song.url, seconds);
     
     const resource = createAudioResource(stream, {
