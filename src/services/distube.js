@@ -151,7 +151,7 @@ function setupEvents(distube, client) {
         });
       }
     })
-    .on(Events.ADD_SONG, (queue, song) => {
+    .on(Events.ADD_SONG, async (queue, song) => {
       logger.queue(queue.id, 'addSong', { title: song.name });
       
       // Check max duration from server settings
@@ -163,11 +163,36 @@ function setupEvents(distube, client) {
           queue.songs.splice(index, 1);
         }
         const maxMins = Math.floor(settings.maxDuration / 60);
+        
+        // Try to edit the Processing message, otherwise send new message
+        const replyMessage = song.metadata?.replyMessage;
+        if (replyMessage) {
+          try {
+            await replyMessage.edit(`❌ Rejected **${song.name}** - exceeds max duration (${maxMins} min limit)`);
+            delete song.metadata.replyMessage;
+            return;
+          } catch (e) { /* ignore */ }
+        }
         queue.textChannel?.send(`❌ Rejected **${song.name}** - exceeds max duration (${maxMins} min limit)`);
         return;
       }
       
-      queue.textChannel?.send(`✅ Added to queue: **${song.name}** - \`${song.formattedDuration}\``);
+      const addedMsg = `✅ Added to queue: **${song.name}** - \`${song.formattedDuration}\``;
+      
+      // Try to edit the original "Processing" message if it exists
+      const replyMessage = song.metadata?.replyMessage;
+      if (replyMessage) {
+        try {
+          await replyMessage.edit(addedMsg);
+          delete song.metadata.replyMessage;
+          return;
+        } catch (e) {
+          logger.debug('DisTube', 'Could not edit reply message: ' + e.message);
+        }
+      }
+      
+      // Fallback: send a new message
+      queue.textChannel?.send(addedMsg);
     })
     .on(Events.ADD_LIST, (queue, playlist) => {
       logger.queue(queue.id, 'addPlaylist', { name: playlist.name, count: playlist.songs.length });
