@@ -28,61 +28,61 @@ class Utility(commands.Cog):
         )
         
         embed.add_field(
-            name="🎶 Playing Music",
-            value="`/play` - Play from URL or search\n"
+            name="🎶 Playing",
+            value="`/play` `/search` `/playnext`\n"
+                  "`/forceplay` (DJ)\n"
                   "`/pause` `/resume` `/stop`\n"
-                  "`/seek` - Jump to timestamp\n"
-                  "`/replay` - Restart song",
+                  "`/seek` `/replay`",
             inline=True
         )
         
         embed.add_field(
             name="⏭️ Skipping",
-            value="`/skip` - Skip current\n"
-                  "`/voteskip` - Vote to skip\n"
-                  "`/previous` - Previous track\n"
-                  "`/jump` - Jump to position",
+            value="`/skip` `/forceskip` (DJ)\n"
+                  "`/voteskip` - Vote skip\n"
+                  "`/previous` - Previous\n"
+                  "`/jump` `/skipto`",
             inline=True
         )
         
         embed.add_field(
             name="📋 Queue",
-            value="`/queue` - View queue\n"
-                  "`/nowplaying` - Now playing\n"
+            value="`/queue` `/nowplaying`\n"
                   "`/shuffle` `/clear`\n"
-                  "`/remove` `/move`",
+                  "`/remove` `/forceremove`\n"
+                  "`/move`",
             inline=True
         )
         
         embed.add_field(
             name="🎛️ Audio",
-            value="`/volume` - Set volume\n"
-                  "`/filters` - Audio effects\n"
-                  "`/equalizer` - EQ presets\n"
-                  "`/speed` `/pitch`",
+            value="`/volume` (0-200)\n"
+                  "`/filters` - Effects\n"
+                  "`/equalizer` - EQ\n"
+                  "`/lyrics` - Get lyrics",
             inline=True
         )
         
         embed.add_field(
             name="💾 Playlists",
-            value="`/savelist` - Save queue\n"
-                  "`/loadlist` - Load playlist\n"
+            value="`/savelist` `/loadlist`\n"
                   "`/playlists` - Your lists\n"
-                  "`/deletelist` `/appendlist`",
+                  "`/deletelist`\n"
+                  "`/appendlist`",
             inline=True
         )
         
         embed.add_field(
             name="⚙️ Settings",
-            value="`/loop` - Toggle loop\n"
-                  "`/autoplay` - Auto-queue\n"
-                  "`/ping` - Bot latency\n"
-                  "`/stats` - Bot stats",
+            value="`/loop` `/autoplay`\n"
+                  "`/djrole` `/skipratio`\n"
+                  "`/settc` `/setvc`\n"
+                  "`/queuetype`",
             inline=True
         )
         
         embed.set_footer(
-            text="Supports YouTube, Spotify, SoundCloud & more!"
+            text="YouTube, Spotify, SoundCloud & more! | DJ = requires DJ role"
         )
         
         await interaction.response.send_message(embed=embed)

@@ -175,6 +175,69 @@ class Queue(commands.Cog):
         del player.queue[index]
         await interaction.response.send_message(f"🗑️ Removed **{track.title}** from the queue.")
     
+    @app_commands.command(name="forceremove", description="Force remove tracks by position or user (DJ only)")
+    @app_commands.describe(
+        position="Position to remove (2+)",
+        user="Remove all tracks from this user"
+    )
+    async def forceremove(
+        self,
+        interaction: discord.Interaction,
+        position: app_commands.Range[int, 2, 1000] = None,
+        user: discord.Member = None
+    ):
+        """Force remove - DJ only."""
+        import os
+        owner_id = os.getenv('OWNER_ID')
+        member = cast(discord.Member, interaction.user)
+        
+        # Check DJ
+        is_admin = member.guild_permissions.administrator or member.guild_permissions.manage_guild
+        is_owner = owner_id and str(member.id) == owner_id
+        
+        if not is_admin and not is_owner:
+            # Check DJ role
+            from services.storage import server_settings
+            dj_role = server_settings.get_setting(interaction.guild_id, 'dj_role_id')
+            if dj_role and not any(str(r.id) == dj_role for r in member.roles):
+                return await interaction.response.send_message("🔒 DJ only.", ephemeral=True)
+        
+        player = cast(wavelink.Player, interaction.guild.voice_client)
+        if not player or not player.queue:
+            return await interaction.response.send_message("Queue is empty.", ephemeral=True)
+        
+        if position is not None:
+            index = position - 2
+            if index >= len(player.queue):
+                return await interaction.response.send_message("Invalid position.", ephemeral=True)
+            
+            removed = player.queue[index]
+            del player.queue[index]
+            requester = getattr(removed, 'requester', None)
+            await interaction.response.send_message(
+                f"🗑️ Force removed **{removed.title}** (by {requester.mention if requester else 'Unknown'})"
+            )
+        
+        elif user is not None:
+            removed_count = 0
+            i = 0
+            while i < len(player.queue):
+                track = player.queue[i]
+                requester = getattr(track, 'requester', None)
+                if requester and requester.id == user.id:
+                    del player.queue[i]
+                    removed_count += 1
+                else:
+                    i += 1
+            
+            if removed_count == 0:
+                return await interaction.response.send_message(f"No tracks from {user.mention}.", ephemeral=True)
+            
+            await interaction.response.send_message(f"🗑️ Removed **{removed_count}** tracks by {user.mention}.")
+        
+        else:
+            await interaction.response.send_message("Provide a position or user.", ephemeral=True)
+    
     @app_commands.command(name="move", description="Move a track to a different position")
     @app_commands.describe(
         from_pos="Current position (starting at 2)",
