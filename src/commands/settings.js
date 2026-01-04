@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isOwner, isDJ, djOnlyError, ownerOnlyError } = require('../utils/permissions');
+const { getEffectiveSkipRatio } = require('../services/serverSettings');
 
 const commands = {
   settings: {
@@ -146,10 +147,11 @@ const commands = {
       // Add vote
       player.data.skipVotes.add(member.user.id);
       
-      // Calculate votes needed (50% of listeners, min 1)
+      // Calculate votes needed (use server-specific or global ratio)
       const voiceChannel = member.voice.channel;
       const listeners = voiceChannel.members.filter(m => !m.user.bot).size;
-      const votesNeeded = Math.ceil(listeners / 2);
+      const skipRatio = getEffectiveSkipRatio(interaction.guildId, client.config.skipRatio || 0.5);
+      const votesNeeded = Math.max(1, Math.ceil(listeners * skipRatio));
       const currentVotes = player.data.skipVotes.size;
       
       // Check if enough votes

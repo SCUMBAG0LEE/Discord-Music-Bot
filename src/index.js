@@ -5,6 +5,7 @@ const { Connectors } = require('shoukaku');
 const fs = require('fs');
 const path = require('path');
 const { logger } = require('./utils/logger');
+const { formatDuration } = require('./utils/formatters');
 const { loadSettings, canUseTextChannel, canUseVoiceChannel, getEffectiveSkipRatio } = require('./services/serverSettings');
 const { getPlaylist } = require('./services/playlists');
 
@@ -89,20 +90,6 @@ client.kazagumo = kazagumo;
 
 // Idle/alone timeout trackers
 const timeouts = new Map();
-
-// Helper function
-function formatDuration(ms) {
-  if (!ms || isNaN(ms)) return '0:00';
-  const seconds = Math.floor(ms / 1000);
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${minutes}:${secs.toString().padStart(2, '0')}`;
-}
 
 // Clear timeout for a guild
 function clearGuildTimeout(guildId) {
@@ -283,6 +270,8 @@ kazagumo.on('playerCreate', async (player) => {
         
         // Start playing if not already
         if (!player.playing && !player.paused && player.queue.length > 0) {
+          // Suppress "Now playing" since we already sent "Auto-loaded" message
+          player.data.suppressNowPlaying = true;
           player.play();
         }
       }
