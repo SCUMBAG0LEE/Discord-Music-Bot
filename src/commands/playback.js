@@ -1,5 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { formatDuration, parseTimestamp } = require('../utils/formatters');
+const { canUseDJCommands } = require('../utils/permissions');
+const { getEffectiveSkipRatio } = require('../services/serverSettings');
 
 const commands = {
   pause: {
@@ -53,7 +55,7 @@ const commands = {
   skip: {
     data: new SlashCommandBuilder()
       .setName('skip')
-      .setDescription('Skip the current song'),
+      .setDescription('Skip the current song (DJ/requester can force skip)'),
 
     async execute(interaction, client) {
       const player = client.kazagumo.players.get(interaction.guildId);
@@ -61,21 +63,53 @@ const commands = {
         return interaction.reply({ content: 'Nothing is playing.', ephemeral: true });
       }
       
-      player.skip();
-      return interaction.reply('⏭️ Skipped.');
+      // DJ, owner, or requester can force skip
+      if (canUseDJCommands(interaction, client, player)) {
+        player.skip();
+        return interaction.reply('⏭️ Skipped.');
+      }
+      
+      // Otherwise, vote skip
+      const member = interaction.member;
+      if (!member.voice.channel || member.voice.channelId !== player.voiceId) {
+        return interaction.reply({ content: 'You must be in the voice channel.', ephemeral: true });
+      }
+      
+      if (!player.data.skipVotes) player.data.skipVotes = new Set();
+      
+      if (player.data.skipVotes.has(member.user.id)) {
+        return interaction.reply({ content: 'You already voted to skip.', ephemeral: true });
+      }
+      
+      player.data.skipVotes.add(member.user.id);
+      
+      const voiceChannel = member.voice.channel;
+      const listeners = voiceChannel.members.filter(m => !m.user.bot).size;
+      // Use server-specific or global skip ratio
+      const skipRatio = getEffectiveSkipRatio(interaction.guildId, client.config.skipRatio || 0.5);
+      const votesNeeded = Math.max(1, Math.ceil(listeners * skipRatio));
+      const currentVotes = player.data.skipVotes.size;
+      
+      if (currentVotes >= votesNeeded) {
+        player.data.skipVotes.clear();
+        player.skip();
+        return interaction.reply(`⏭️ Vote passed! Skipped.`);
+      }
+      
+      return interaction.reply(`🗳️ Skip vote: **${currentVotes}/${votesNeeded}**`);
     }
   },
 
   volume: {
     data: new SlashCommandBuilder()
       .setName('volume')
-      .setDescription('Set playback volume (0-200)')
+      .setDescription('Set playback volume (0-150)')
       .addIntegerOption(option =>
         option.setName('level')
           .setDescription('Volume level')
           .setRequired(true)
           .setMinValue(0)
-          .setMaxValue(200)
+          .setMaxValue(150)
       ),
 
     async execute(interaction, client) {

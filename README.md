@@ -1,6 +1,6 @@
 # 🎵 Discord Music Bot
 
-A feature-rich Discord music bot powered by **Lavalink** with **YouTube, Spotify, and SoundCloud** support.
+A feature-rich Discord music bot powered by **Lavalink** — inspired by [JMusicBot](https://github.com/jagrosh/MusicBot) but using modern JavaScript and Lavalink architecture.
 
 ## ✨ Features
 
@@ -13,7 +13,9 @@ A feature-rich Discord music bot powered by **Lavalink** with **YouTube, Spotify
 - Paginated queue display
 - Shuffle, move, remove, and jump
 - **Loop Mode** — Off, track, or queue
-- Supports playlists
+- **Fair Queue** — Round-robin mode to prevent queue domination
+- **Max Queue Size** — Configurable limit (0 = unlimited)
+- **Max Duration** — Reject tracks over a time limit
 
 ### ⏯️ Playback Controls
 - **Seek** — Jump to any timestamp
@@ -21,11 +23,29 @@ A feature-rich Discord music bot powered by **Lavalink** with **YouTube, Spotify
 - **Previous** — Play the previous song
 - **Volume Control** — 0-150% range
 - **Audio Filters** — Bass boost, nightcore, vaporwave, 8D, and more
+- **Vote Skip** — Configurable skip ratio per server
 
 ### 🎛️ Rich Now Playing
 - Progress bar with elapsed/total time
 - Requester info
 - Loop status indicators
+- **Lyrics** — Fetch song lyrics automatically
+
+### 🔒 Permission System
+- **DJ Role** — Control who can force skip, clear queue, etc.
+- **Owner Commands** — Bot owner exclusives (setavatar, shutdown, etc.)
+- **Vote Skip** — Non-DJs can vote to skip
+
+### 💾 Playlists
+- **Save/Load** — Save queue as personal playlist
+- **Append** — Add tracks to existing playlists
+- **Auto-Playlist** — Auto-load a playlist when bot joins
+
+### ⚙️ Server Settings
+- **Channel Lock** — Restrict bot to specific text/voice channels
+- **24/7 Mode** — Keep bot in voice channel permanently
+- **Song in Status** — Show current track in bot's activity
+- **Per-Server Config** — Each server can have custom settings
 
 ## 📁 Project Structure
 
@@ -38,12 +58,25 @@ src/
 │   ├── queue.js             # /queue - Paginated queue display
 │   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump, /skipto
 │   ├── filters.js           # /filter, /clearfilter, /filters, /speed, /pitch
+│   ├── search.js            # /search - Interactive search with selection
+│   ├── settings.js          # /settings, /forceskip, /voteskip, /forceplay, /playnext
+│   ├── playlists.js         # /savelist, /loadlist, /deletelist, /playlists, /appendlist
+│   ├── admin.js             # /settc, /setvc, /queuetype, /skipratio, /autoplaylist, /songinstatus
+│   ├── owner.js             # /setavatar, /setname, /setstatus, /setgame, /shutdown, /debug
+│   ├── lyrics.js            # /lyrics - Fetch song lyrics
 │   └── utility.js           # /help, /ping, /stats
+├── services/
+│   ├── playlists.js         # File-based playlist storage
+│   └── serverSettings.js    # Per-server settings storage
 └── utils/
     ├── formatters.js        # Duration formatting utilities
+    ├── permissions.js       # DJ/Owner permission checks
     └── logger.js            # Colored console logging
 lavalink/
 └── application.yml          # Lavalink server configuration
+data/
+├── playlists/               # User playlists (auto-created)
+└── servers/                 # Server settings (auto-created)
 ```
 
 ## 🚀 Quick Start
@@ -116,12 +149,24 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DISCORD_TOKEN` | ✅ | Discord bot token |
+| `BOT_TOKEN` | ✅ | Discord bot token |
 | `CLIENT_ID` | ✅ | Bot application ID (for slash commands) |
 | `GUILD_ID` | ❌ | Test server ID (instant command updates) |
+| `OWNER_ID` | ❌ | Your Discord user ID (for owner commands) |
+| `DJ_ROLE_ID` | ❌ | Role ID for DJ permissions |
 | `LAVALINK_HOST` | ✅ | Lavalink server address (e.g., `localhost:2333`) |
 | `LAVALINK_PASSWORD` | ✅ | Lavalink server password |
 | `LAVALINK_SECURE` | ❌ | Use WSS/HTTPS (default: false) |
+| `DEFAULT_VOLUME` | ❌ | Default volume (0-150, default: 100) |
+| `MAX_QUEUE_SIZE` | ❌ | Max queue length (0 = unlimited) |
+| `MAX_DURATION` | ❌ | Max track duration in seconds (0 = unlimited) |
+| `SKIP_RATIO` | ❌ | Vote skip ratio (0.0-1.0, default: 0.5) |
+| `ALONE_TIME` | ❌ | Seconds before leaving empty VC (default: 60) |
+| `IDLE_TIME` | ❌ | Seconds before leaving when idle (default: 120) |
+| `STAY_IN_CHANNEL` | ❌ | Global 24/7 mode (default: false) |
+| `BOT_ACTIVITY_TYPE` | ❌ | Activity type: PLAYING, LISTENING, WATCHING, COMPETING |
+| `BOT_ACTIVITY_NAME` | ❌ | Activity text (default: music \| /help) |
+| `BOT_STATUS` | ❌ | Status: online, idle, dnd, invisible |
 
 ### Discord Bot Setup
 
@@ -138,6 +183,9 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | Command | Description |
 |---------|-------------|
 | `/play <query>` | Play from YouTube/Spotify/SoundCloud URL or search |
+| `/search <query>` | Search and select from results |
+| `/playnext <query>` | Add song to play next in queue |
+| `/forceplay <query>` | Play immediately, skipping current (DJ) |
 
 ### ⏯️ Playback Control
 | Command | Description |
@@ -151,11 +199,14 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `/previous` | Play the previous song |
 | `/nowplaying` | Show now playing info |
 | `/loop` | Cycle loop mode (off → track → queue) |
+| `/lyrics [query]` | Get song lyrics |
 
 ### ⏭️ Skipping
 | Command | Description |
 |---------|-------------|
-| `/skip` | Skip current track |
+| `/skip` | Skip current track (vote or force) |
+| `/forceskip` | Force skip (DJ only) |
+| `/voteskip` | Vote to skip |
 | `/jump <position>` | Jump to song at queue position |
 | `/skipto <position>` | Alias for /jump |
 
@@ -166,7 +217,17 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `/shuffle` | Shuffle the queue |
 | `/clear` | Clear queue |
 | `/remove <position>` | Remove song at position |
+| `/forceremove` | Force remove by position or user (DJ) |
 | `/move <from> <to>` | Move song in queue |
+
+### 💾 Playlists
+| Command | Description |
+|---------|-------------|
+| `/playlists` | View your saved playlists |
+| `/savelist <name>` | Save current queue as playlist |
+| `/loadlist <name>` | Load and play a playlist |
+| `/appendlist <name>` | Add current queue to playlist |
+| `/deletelist <name>` | Delete a playlist |
 
 ### 🎛️ Audio Filters
 | Command | Description |
@@ -179,6 +240,35 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 **Available Filter Presets:**
 `bassboost`, `nightcore`, `vaporwave`, `8d`, `tremolo`, `vibrato`, `karaoke`, `lowpass`, `soft`, `trebleboost`
+
+### ⚙️ Settings
+| Command | Description |
+|---------|-------------|
+| `/settings view` | View current settings |
+| `/settings volume <level>` | Set default volume |
+| `/settings djrole [role]` | Set/clear DJ role |
+| `/settings 247` | Toggle 24/7 mode for this server |
+| `/serversettings` | View all server settings |
+
+### 🔧 Admin Commands (Requires Administrator)
+| Command | Description |
+|---------|-------------|
+| `/settc [channel]` | Lock bot to a text channel |
+| `/setvc [channel]` | Lock bot to a voice channel |
+| `/queuetype <linear\|fair>` | Set queue type (fair = round-robin) |
+| `/skipratio [ratio]` | Set vote skip ratio for server |
+| `/autoplaylist [name]` | Set auto-load playlist |
+| `/songinstatus` | Toggle showing song in bot status |
+
+### 👑 Owner Commands
+| Command | Description |
+|---------|-------------|
+| `/setavatar <image>` | Change bot avatar |
+| `/setname <name>` | Change bot username |
+| `/setstatus <status>` | Change online status |
+| `/setgame <type> [text]` | Change activity |
+| `/shutdown` | Shutdown the bot |
+| `/debug` | Show debug information |
 
 ### 🔧 Utility
 | Command | Description |

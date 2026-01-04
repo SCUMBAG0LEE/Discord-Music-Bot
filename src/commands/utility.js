@@ -18,16 +18,22 @@ const commands = {
             name: '🎶 Playback',
             value: [
               '`/play` - Play a song or playlist',
+              '`/search` - Search with selection',
+              '`/playnext` - Add song to play next',
               '`/pause` - Pause playback',
               '`/resume` - Resume playback',
               '`/stop` - Stop and disconnect',
               '`/skip` - Skip current track',
+              '`/forceskip` - Force skip (DJ)',
+              '`/voteskip` - Vote to skip',
+              '`/forceplay` - Play immediately (DJ)',
               '`/previous` - Play previous track',
               '`/seek` - Seek to position',
               '`/volume` - Adjust volume',
               '`/nowplaying` - Show current track',
               '`/loop` - Toggle loop mode',
-              '`/replay` - Replay current track'
+              '`/replay` - Replay current track',
+              '`/lyrics` - Get song lyrics'
             ].join('\n'),
             inline: false
           },
@@ -38,9 +44,21 @@ const commands = {
               '`/shuffle` - Shuffle the queue',
               '`/clear` - Clear the queue',
               '`/remove` - Remove a track',
+              '`/forceremove` - Force remove (DJ)',
               '`/move` - Move a track',
               '`/jump` - Jump to a track',
               '`/skipto` - Skip to a track'
+            ].join('\n'),
+            inline: false
+          },
+          {
+            name: '💾 Playlists',
+            value: [
+              '`/playlists` - View saved playlists',
+              '`/savelist` - Save queue as playlist',
+              '`/loadlist` - Load a playlist',
+              '`/appendlist` - Add to playlist',
+              '`/deletelist` - Delete a playlist'
             ].join('\n'),
             inline: false
           },
@@ -56,6 +74,29 @@ const commands = {
             inline: false
           },
           {
+            name: '⚙️ Settings',
+            value: [
+              '`/settings view` - View settings',
+              '`/settings volume` - Default volume',
+              '`/settings djrole` - Set DJ role',
+              '`/settings 247` - Toggle 24/7 mode',
+              '`/serversettings` - View all server settings'
+            ].join('\n'),
+            inline: false
+          },
+          {
+            name: '🔧 Admin (Requires Admin/Owner)',
+            value: [
+              '`/settc` - Lock bot to text channel',
+              '`/setvc` - Lock bot to voice channel',
+              '`/queuetype` - Linear or fair queue',
+              '`/skipratio` - Vote skip threshold',
+              '`/autoplaylist` - Auto-load playlist',
+              '`/songinstatus` - Show song in status'
+            ].join('\n'),
+            inline: false
+          },
+          {
             name: '🔧 Utility',
             value: [
               '`/help` - Show this message',
@@ -65,7 +106,7 @@ const commands = {
             inline: false
           }
         )
-        .setFooter({ text: 'Powered by Lavalink' });
+        .setFooter({ text: 'Powered by Lavalink | DJ commands require DJ role' });
       
       return interaction.reply({ embeds: [embed] });
     }
