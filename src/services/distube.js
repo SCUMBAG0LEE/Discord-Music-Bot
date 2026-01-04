@@ -145,8 +145,15 @@ function setupEvents(distube, client) {
       // Update bot status with current song if enabled
       if (client.config?.songInStatus || queue.songInStatus) {
         const { ActivityType } = require('discord.js');
+        const activeQueues = distube.queues.size;
+        
+        // Show generic status if playing in multiple servers
+        const statusName = activeQueues > 1 
+          ? 'music in multiple servers'
+          : song.name.slice(0, 128);
+        
         client.user.setPresence({
-          activities: [{ name: song.name.slice(0, 128), type: ActivityType.Listening }],
+          activities: [{ name: statusName, type: ActivityType.Listening }],
           status: client.config?.status || 'online'
         });
       }
@@ -239,13 +246,33 @@ function setupEvents(distube, client) {
       
       queue.textChannel?.send('✅ Queue finished! Use `/play` to add more songs.');
       
-      // Reset bot status to default
+      // Reset bot status - but check if other queues are still active
       if (client.config?.songInStatus || queue.songInStatus) {
         const { ActivityType } = require('discord.js');
-        client.user.setPresence({
-          activities: [{ name: client.config?.activityName || 'music | /help', type: client.config?.activityType || ActivityType.Listening }],
-          status: client.config?.status || 'online'
-        });
+        const remainingQueues = distube.queues.size;
+        
+        if (remainingQueues > 1) {
+          // Other servers are still playing - show generic status
+          client.user.setPresence({
+            activities: [{ name: 'music in multiple servers', type: ActivityType.Listening }],
+            status: client.config?.status || 'online'
+          });
+        } else if (remainingQueues === 1) {
+          // One other queue left - find it and show that song
+          const otherQueue = distube.queues.first();
+          if (otherQueue?.songs?.[0]) {
+            client.user.setPresence({
+              activities: [{ name: otherQueue.songs[0].name.slice(0, 128), type: ActivityType.Listening }],
+              status: client.config?.status || 'online'
+            });
+          }
+        } else {
+          // No queues left - reset to default status
+          client.user.setPresence({
+            activities: [{ name: client.config?.activityName || 'music | /help', type: client.config?.activityType || ActivityType.Listening }],
+            status: client.config?.status || 'online'
+          });
+        }
       }
       
       // Start idle timeout if configured
@@ -255,6 +282,41 @@ function setupEvents(distube, client) {
     })
     .on(Events.DISCONNECT, queue => {
       logger.voice(queue.id, 'Disconnected from voice channel');
+      
+      // Clear any pending timeouts for this guild
+      if (client.clearGuildTimeout) {
+        client.clearGuildTimeout(queue.id);
+      }
+      
+      // Update status if needed (similar to FINISH)
+      if (client.config?.songInStatus || queue.songInStatus) {
+        const { ActivityType } = require('discord.js');
+        const remainingQueues = distube.queues.size - 1; // -1 because this queue is being removed
+        
+        if (remainingQueues > 1) {
+          client.user.setPresence({
+            activities: [{ name: 'music in multiple servers', type: ActivityType.Listening }],
+            status: client.config?.status || 'online'
+          });
+        } else if (remainingQueues === 1) {
+          // Find the remaining queue
+          for (const q of distube.queues.values()) {
+            if (q.id !== queue.id && q.songs?.[0]) {
+              client.user.setPresence({
+                activities: [{ name: q.songs[0].name.slice(0, 128), type: ActivityType.Listening }],
+                status: client.config?.status || 'online'
+              });
+              break;
+            }
+          }
+        } else {
+          // No queues left
+          client.user.setPresence({
+            activities: [{ name: client.config?.activityName || 'music | /help', type: client.config?.activityType || ActivityType.Listening }],
+            status: client.config?.status || 'online'
+          });
+        }
+      }
     })
     .on(Events.INIT_QUEUE, queue => {
       logger.queue(queue.id, 'Queue initialized');
@@ -262,6 +324,12 @@ function setupEvents(distube, client) {
       queue.volume = client.config?.defaultVolume || 100;
       queue.autoplay = false;
       queue.votes = new Set(); // For vote skip
+      queue.skipVotes = new Set(); // For vote skip tracking
+      
+      // Load server-specific settings
+      const settings = loadSettings(queue.id);
+      queue.songInStatus = settings.songInStatus || false;
+      queue.stayInChannel = settings.stayInChannel || false;
     })
     .on(Events.SEARCH_NO_RESULT, (message, query) => {
       logger.warn('DisTube', `No results for: ${query}`);
