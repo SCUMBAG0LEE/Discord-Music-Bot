@@ -1,11 +1,11 @@
 # 🎵 Discord Music Bot
 
-A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio** support, built with discord.js v14 and [DisTube](https://distube.js.org/).
+A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio** support, built with discord.js v14 and [DisTube](https://distube.js.org/) using **yt-dlp** for reliable YouTube playback.
 
 ## ✨ Features
 
 ### 🎶 Multi-Platform Support
-- **YouTube** — Songs, playlists, and interactive search
+- **YouTube** — Songs, playlists, and interactive search (via yt-dlp)
 - **Spotify** — Tracks, playlists, and albums (auto-converts to YouTube)
 - **SoundCloud** — Tracks and playlists
 - **Radio/Streams** — Built-in presets and custom stream URLs
@@ -27,8 +27,9 @@ A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio*
 - **Previous** — Play the previous song
 - **24/7 Mode** — Keep the bot in voice channel indefinitely
 - **Volume Control** — 0-200% range
-- **Vote Skip** — Democratic skipping
+- **Vote Skip** — Democratic skipping with configurable ratio
 - **Audio Filters** — Bass boost, nightcore, vaporwave, and more
+- **Lyrics** — Fetch song lyrics automatically
 
 ### 🎛️ Rich Now Playing
 - Progress bar with elapsed/total time
@@ -44,31 +45,48 @@ src/
 │   ├── play.js              # /play - Multi-platform playback
 │   ├── search.js            # /search - Interactive YouTube search
 │   ├── queue.js             # /queue - Paginated queue display
-│   ├── playback.js          # /pause, /resume, /stop, /volume, /loop, /skip, /voteskip, /np, /previous, /filters
+│   ├── playback.js          # /pause, /resume, /stop, /volume, /skip, /np, /previous
 │   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump, /skipto
 │   ├── playlists.js         # /savelist, /loadlist, /deletelist, /playlists, /appendlist
-│   ├── advanced.js          # /seek, /replay, /nowplaying, /autoplay, /247, /radio
-│   └── utility.js           # /help, /refreshcommands
+│   ├── advanced.js          # /seek, /replay, /nowplaying, /radio
+│   ├── settings.js          # /settings, /forceskip, /voteskip, /forceplay, /playnext, /loop, /autoplay, /247
+│   ├── filters.js           # /filter, /clearfilter, /filters
+│   ├── admin.js             # /settc, /setvc, /queuetype, /skipratio, /autoplaylist, /songinstatus, /serversettings, /maxduration, /setdjrole, /forceremove
+│   ├── owner.js             # /setavatar, /setname, /setstatus, /setgame, /shutdown, /debug, /eval, /servers, /leaveserver
+│   ├── lyrics.js            # /lyrics - Fetch song lyrics
+│   └── utility.js           # /help, /refreshcommands, /ping, /stats
+├── plugins/
+│   └── YtDlpPlugin.js       # Custom DisTube plugin using yt-dlp
 ├── services/
 │   ├── distube.js           # DisTube initialization & event handling
-│   └── playlists.js         # File-based playlist storage
+│   ├── playlists.js         # File-based playlist storage
+│   └── serverSettings.js    # Per-server configuration storage
 └── utils/
     ├── formatters.js        # Duration formatting utilities
-    └── permissions.js       # DJ/owner permission checks
+    ├── permissions.js       # DJ/owner permission checks
+    └── logger.js            # Colored console logging
+data/
+├── playlists/               # User playlists (auto-created)
+└── servers/                 # Server settings (auto-created)
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **Node.js 18+** — Required for YouTube.js and DisTube
+- **Node.js 18+** — Required for DisTube and discord.js v14
 - **FFmpeg** — Required for audio processing
+- **yt-dlp** — Required for YouTube playback
   ```bash
   # Ubuntu/Debian
   sudo apt install ffmpeg
+  pip install yt-dlp
   
   # Windows (via chocolatey)
   choco install ffmpeg
+  choco install yt-dlp
+  
+  # Or download yt-dlp directly from https://github.com/yt-dlp/yt-dlp/releases
   ```
 
 ### Installation
@@ -109,20 +127,21 @@ Copy `.env.example` to `.env` and fill in your credentials:
 
 > ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
 
-### YouTube.js (YouTube Backend)
+### yt-dlp (YouTube Backend)
 
-This bot uses **[YouTube.js](https://github.com/LuanRT/YouTube.js)** for YouTube support, which interfaces directly with YouTube's InnerTube API. No external binaries or Python required!
+This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support, which is the most reliable method for extracting YouTube audio.
 
 **Benefits:**
-- Pure JavaScript - no Python or external binaries needed
-- Actively maintained with frequent updates
-- Direct access to YouTube's internal API
-- More reliable than ytdl-core
+- Most reliable YouTube support available
+- Regularly updated to handle YouTube changes
+- Supports age-restricted content
+- Works with live streams and premieres
+- Fallback mechanisms for rate limiting
 
-**Technical Notes (v4.3.1):**
-- Uses the **TV InnerTube client** for streaming URLs (WEB client switched to SABR which doesn't provide separate URLs)
-- Implements custom JavaScript evaluator for URL signature deciphering
-- Supports cookie-based authentication for age-restricted content (see below)
+**Setup:**
+1. Install yt-dlp: `pip install yt-dlp` or download from [releases](https://github.com/yt-dlp/yt-dlp/releases)
+2. Ensure it's in your PATH or place `yt-dlp.exe` in the project root
+3. Keep it updated: `pip install -U yt-dlp`
 
 ### Discord Bot Setup
 
@@ -186,14 +205,32 @@ This bot uses **[YouTube.js](https://github.com/LuanRT/YouTube.js)** for YouTube
 ### ⚙️ Settings
 | Command | Description |
 |---------|-------------|
+| `/settings` | View or change music settings |
 | `/loop` | Cycle loop mode (off → song → queue) |
 | `/autoplay` | Toggle autoplay (queue related songs) |
 | `/247` | Toggle 24/7 mode (stay in channel) |
+
+### 🔧 Admin (Requires Admin Permission)
+| Command | Description |
+|---------|-------------|
+| `/settc <channel>` | Lock bot to specific text channel |
+| `/setvc <channel>` | Lock bot to specific voice channel |
+| `/setdjrole <role>` | Set the DJ role |
+| `/queuetype` | Set linear or fair queue mode |
+| `/skipratio <0.0-1.0>` | Set vote skip threshold |
+| `/maxduration <seconds>` | Set maximum song duration |
+| `/autoplaylist <name>` | Auto-play a playlist when queue ends |
+| `/songinstatus` | Show current song in bot status |
+| `/serversettings` | View all server settings |
+| `/forceremove` | Force remove songs from queue |
 
 ### 🔧 Utility
 | Command | Description |
 |---------|-------------|
 | `/help` | Show all commands |
+| `/ping` | Check bot latency |
+| `/stats` | Bot statistics |
+| `/lyrics` | Get song lyrics |
 | `/refreshcommands` | Refresh slash commands (owner only) |
 
 ## 📻 Radio Presets
@@ -240,7 +277,8 @@ npm run dev
 
 ## 📜 Version History
 
-- **v4.3.0** — Switched to YouTube.js (InnerTube API) - no Python/external binaries needed
+- **v5.0.0** — Major refactor: Added server settings, admin commands, lyrics, DJ role per-server, fair queue, vote skip ratio, max duration, and more
+- **v4.3.0** — Switched to yt-dlp for reliable YouTube playback
 - **v4.2.0** — Switched to custom yt-dlp plugin for better YouTube compatibility
 - **v4.1.0** — Added audio filters, previous song, skipto command, more radio stations, improved queue display
 - **v4.0.0** — DisTube migration (actively maintained), improved YouTube reliability
@@ -251,20 +289,28 @@ npm run dev
 ## 🔧 Troubleshooting
 
 ### YouTube playback issues
-- YouTube may rate-limit or block requests. Try adding YouTube cookies:
+- Ensure yt-dlp is installed and up-to-date: `pip install -U yt-dlp`
+- YouTube may rate-limit requests. Try using cookies:
   1. Open incognito window, log into YouTube
   2. Open DevTools (F12) → Network tab
   3. Copy the `Cookie` header value from any youtube.com request
-  4. Paste into `youtube-cookies.txt` in project root
+  4. Create `cookies.txt` in Netscape format or use a browser extension to export cookies
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
 
 ### Bot won't connect to voice
 - Ensure the bot has `Connect` and `Speak` permissions
 - Check that no other bot is using the voice channel exclusively
+- If using `/setvc`, make sure the bot is allowed in that channel
 
 ### Commands not showing
 - Run `/refreshcommands` (owner only) or restart the bot
 - Ensure you invited the bot with `applications.commands` scope
+- Wait a few minutes for Discord to propagate changes
+
+### Permission issues
+- `/setdjrole` to configure who can use DJ commands
+- Administrators always have DJ permissions
+- Song requesters can skip their own songs
 
 ## 📄 License
 

@@ -1,8 +1,37 @@
+/**
+ * DisTube Service
+ * Manages the DisTube instance and event handling
+ */
+
 const { DisTube, Events } = require('distube');
-const { YouTubeJsPlugin } = require('../plugins/YouTubeJsPlugin');
+const { YtDlpPlugin } = require('../plugins/YtDlpPlugin');
 const { SpotifyPlugin } = require('@distube/spotify');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
 const { logger } = require('../utils/logger');
+const { loadSettings } = require('./serverSettings');
+
+// FFmpeg filter presets for audio effects
+const filterPresets = {
+  bassboost: 'bass=g=10',
+  '3d': 'apulsator=hz=0.125',
+  vaporwave: 'asetrate=44100*0.8,aresample=44100,atempo=1.1',
+  nightcore: 'asetrate=44100*1.25,aresample=44100',
+  phaser: 'aphaser=in_gain=0.4',
+  tremolo: 'tremolo',
+  vibrato: 'vibrato=f=6.5',
+  reverse: 'areverse',
+  treble: 'treble=g=5',
+  normalizer: 'dynaudnorm=g=101',
+  surrounding: 'surround',
+  pulsator: 'apulsator=hz=1',
+  subboost: 'asubboost',
+  karaoke: 'stereotools=mlev=0.03',
+  flanger: 'flanger',
+  gate: 'agate',
+  haas: 'haas',
+  mcompand: 'mcompand',
+  earwax: 'earwax'
+};
 
 /** @type {DisTube|null} */
 let distube = null;
@@ -13,17 +42,13 @@ let distube = null;
  * @returns {DisTube}
  */
 function initialize(client) {
-  // Initialize plugins
-  // IMPORTANT: Plugin order matters! The Spotify plugin uses the first available
-  // search plugin to find songs. YouTube should be first for better search results.
   const plugins = [];
 
-  // YouTube.js plugin - uses InnerTube API directly (no external binaries needed)
-  // Added FIRST so Spotify resolves tracks via YouTube (better matches than SoundCloud)
-  plugins.push(new YouTubeJsPlugin());
-  logger.info('DisTube', 'Using YouTube.js (InnerTube API) for YouTube');
+  // yt-dlp plugin - handles all YouTube playback (most reliable)
+  plugins.push(new YtDlpPlugin());
+  logger.info('DisTube', 'Using yt-dlp for YouTube playback');
 
-  // Add Spotify plugin - will use YouTube for search since it's first
+  // Add Spotify plugin - will use yt-dlp for search since it's first
   if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
     plugins.push(new SpotifyPlugin({
       api: {
@@ -32,44 +57,40 @@ function initialize(client) {
         topTracksCountry: process.env.SPOTIFY_MARKET || 'US'
       }
     }));
-    logger.info('DisTube', 'Spotify plugin enabled (resolving via YouTube)');
+    logger.info('DisTube', 'Spotify plugin enabled');
   } else {
     logger.warn('DisTube', 'Spotify credentials not configured - Spotify support disabled');
   }
 
-  // SoundCloud plugin - added last, only used for direct SoundCloud URLs
+  // SoundCloud plugin
   plugins.push(new SoundCloudPlugin());
 
-  // Create DisTube instance with custom FFmpeg args
-  // Add headers to help with YouTube's URL validation
+  // Create DisTube instance with filter presets
   distube = new DisTube(client, {
     plugins,
     emitNewSongOnly: true,
     emitAddSongWhenCreatingQueue: false,
     emitAddListWhenCreatingQueue: false,
+    // Custom filters for /filter command
     ffmpeg: {
       args: {
         global: {},
         input: {
-          // HTTP headers for YouTube URLs - prevents 403 errors
-          // These headers make FFmpeg's request look like it comes from a browser/app
           headers: [
-            'User-Agent: com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+            'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Origin: https://www.youtube.com',
             'Referer: https://www.youtube.com/'
           ].join('\r\n')
         },
         output: {}
-      }
+      },
+      filters: filterPresets
     }
   });
 
-  // Increase max listeners to avoid warning
   distube.setMaxListeners(20);
-
-  // Set up event handlers
-  setupEvents(distube);
-
+  setupEvents(distube, client);
+  
   logger.success('DisTube', 'Initialized successfully');
   return distube;
 }
@@ -77,35 +98,64 @@ function initialize(client) {
 /**
  * Set up DisTube event handlers
  * @param {DisTube} distube
+ * @param {import('discord.js').Client} client
  */
-function setupEvents(distube) {
+function setupEvents(distube, client) {
   distube
     .on(Events.PLAY_SONG, async (queue, song) => {
       logger.player(queue.id, 'playSong', { title: song.name, duration: song.duration });
+      
       // Clear vote skip votes when a new song starts
       if (queue.votes) queue.votes.clear();
+      if (queue.skipVotes) queue.skipVotes.clear();
       
       const nowPlayingMsg = `🎵 Now playing: **${song.name}** - \`${song.formattedDuration}\``;
       
-      // Try to edit the original "Processing" message if it exists (DisTube stores metadata on Song)
+      // Try to edit the original "Processing" message if it exists
       const replyMessage = song.metadata?.replyMessage;
       if (replyMessage) {
         try {
           await replyMessage.edit(nowPlayingMsg);
-          // Clear the metadata so subsequent songs send new messages
           delete song.metadata.replyMessage;
           return;
         } catch (e) {
-          // If edit fails (message deleted, timeout, etc.), fall through to send new message
           logger.debug('DisTube', 'Could not edit reply message: ' + e.message);
         }
       }
       
       // Fallback: send a new message (for skip, autoplay, etc.)
-      queue.textChannel?.send(nowPlayingMsg);
+      // Unless suppressNowPlaying is set or announceNowPlaying is disabled
+      const settings = loadSettings(queue.id);
+      if (!queue.suppressNowPlaying && settings.announceNowPlaying !== false) {
+        queue.textChannel?.send(nowPlayingMsg);
+      }
+      queue.suppressNowPlaying = false;
+      
+      // Update bot status with current song if enabled
+      if (client.config?.songInStatus || queue.songInStatus) {
+        const { ActivityType } = require('discord.js');
+        client.user.setPresence({
+          activities: [{ name: song.name.slice(0, 128), type: ActivityType.Listening }],
+          status: client.config?.status || 'online'
+        });
+      }
     })
     .on(Events.ADD_SONG, (queue, song) => {
       logger.queue(queue.id, 'addSong', { title: song.name });
+      
+      // Check max duration from server settings
+      const settings = loadSettings(queue.id);
+      if (settings.maxDuration && song.duration > settings.maxDuration) {
+        // Remove the song from queue
+        const index = queue.songs.indexOf(song);
+        if (index > 0) {
+          queue.songs.splice(index, 1);
+        }
+        const maxMins = Math.floor(settings.maxDuration / 60);
+        queue.textChannel?.send(`❌ Rejected **${song.name}** - exceeds max duration (${maxMins} min limit)`);
+        return;
+      }
+      
       queue.textChannel?.send(`✅ Added to queue: **${song.name}** - \`${song.formattedDuration}\``);
     })
     .on(Events.ADD_LIST, (queue, playlist) => {
@@ -118,11 +168,28 @@ function setupEvents(distube) {
     })
     .on(Events.EMPTY, queue => {
       logger.voice(queue.id, 'Voice channel empty');
-      // DisTube handles auto-leave via leaveOnEmpty option
+      // Start alone timeout if configured
+      if (client.startAloneTimeout) {
+        client.startAloneTimeout(queue);
+      }
     })
     .on(Events.FINISH, queue => {
       logger.player(queue.id, 'Queue finished');
       queue.textChannel?.send('✅ Queue finished! Use `/play` to add more songs.');
+      
+      // Reset bot status to default
+      if (client.config?.songInStatus || queue.songInStatus) {
+        const { ActivityType } = require('discord.js');
+        client.user.setPresence({
+          activities: [{ name: client.config?.activityName || 'music | /help', type: client.config?.activityType || ActivityType.Listening }],
+          status: client.config?.status || 'online'
+        });
+      }
+      
+      // Start idle timeout if configured
+      if (client.startIdleTimeout) {
+        client.startIdleTimeout(queue);
+      }
     })
     .on(Events.DISCONNECT, queue => {
       logger.voice(queue.id, 'Disconnected from voice channel');
@@ -130,11 +197,9 @@ function setupEvents(distube) {
     .on(Events.INIT_QUEUE, queue => {
       logger.queue(queue.id, 'Queue initialized');
       // Set default queue properties
-      queue.volume = 100;
+      queue.volume = client.config?.defaultVolume || 100;
       queue.autoplay = false;
-    })
-    .on(Events.SEARCH_CANCEL, (message, query) => {
-      logger.debug('DisTube', `Search cancelled: ${query}`);
+      queue.votes = new Set(); // For vote skip
     })
     .on(Events.SEARCH_NO_RESULT, (message, query) => {
       logger.warn('DisTube', `No results for: ${query}`);
@@ -144,7 +209,6 @@ function setupEvents(distube) {
       queue.textChannel?.send('⚠️ Autoplay: No related songs found.');
     })
     .on(Events.FFMPEG_DEBUG, (debug) => {
-      // Only log in debug mode
       logger.debug('FFmpeg', debug);
     });
 }

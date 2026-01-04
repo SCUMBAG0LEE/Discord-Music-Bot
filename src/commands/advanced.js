@@ -74,7 +74,7 @@ const commands = {
 
       // Check permissions
       const isRequester = song.user && song.user.id === interaction.user.id;
-      if (!isRequester && !isDJ(interaction)) {
+      if (!isRequester && !isDJ(interaction.member, client)) {
         return interaction.reply({ content: 'Only the requester or DJ can replay songs.', ephemeral: true });
       }
 
@@ -161,64 +161,6 @@ const commands = {
       }
 
       return interaction.reply({ embeds: [embed] });
-    }
-  },
-
-  // Autoplay toggle
-  autoplay: {
-    data: new SlashCommandBuilder()
-      .setName('autoplay')
-      .setDescription('Toggle autoplay - automatically queue related songs.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.', ephemeral: true });
-      }
-
-      queue.toggleAutoplay();
-      
-      if (queue.autoplay) {
-        return interaction.reply('📻 Autoplay **enabled** — Related songs will be added when the queue ends.');
-      } else {
-        return interaction.reply('📻 Autoplay **disabled**');
-      }
-    }
-  },
-
-  // 24/7 mode toggle (simplified - we store in queue metadata)
-  twentyfourseven: {
-    data: new SlashCommandBuilder()
-      .setName('247')
-      .setDescription('Toggle 24/7 mode - bot stays in voice channel (not fully supported by DisTube).'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      // Only DJ can toggle 24/7 mode
-      if (!isDJ(interaction)) {
-        return interaction.reply({ content: 'Only DJs can toggle 24/7 mode.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.', ephemeral: true });
-      }
-
-      // Store 24/7 state in queue metadata
-      queue.twentyFourSeven = !queue.twentyFourSeven;
-      
-      if (queue.twentyFourSeven) {
-        return interaction.reply('🔛 24/7 mode **enabled** — Bot will try to stay in voice channel.');
-      } else {
-        return interaction.reply('🔛 24/7 mode **disabled**');
-      }
     }
   },
 

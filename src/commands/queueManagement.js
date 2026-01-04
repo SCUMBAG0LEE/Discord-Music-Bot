@@ -44,7 +44,7 @@ const commands = {
       }
 
       // Check permission for clearing
-      if (!isDJ(interaction)) {
+      if (!isDJ(interaction.member, client)) {
         return interaction.reply({ content: 'Only DJs can clear the queue.', ephemeral: true });
       }
 
@@ -89,7 +89,7 @@ const commands = {
       
       // Check permissions: requester of the song being removed, or DJ
       const isRequester = songToRemove.user && songToRemove.user.id === interaction.user.id;
-      if (!isRequester && !isDJ(interaction)) {
+      if (!isRequester && !isDJ(interaction.member, client)) {
         return interaction.reply({ content: 'You can only remove songs you requested.', ephemeral: true });
       }
 

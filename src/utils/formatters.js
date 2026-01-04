@@ -20,6 +20,15 @@ function formatDuration(seconds) {
 }
 
 /**
+ * Format duration in milliseconds to mm:ss or hh:mm:ss
+ * @param {number} ms - Duration in milliseconds
+ * @returns {string} Formatted duration string
+ */
+function formatDurationMs(ms) {
+  return formatDuration(Math.floor(ms / 1000));
+}
+
+/**
  * Truncate text to a maximum length with ellipsis
  * @param {string} text - Text to truncate
  * @param {number} maxLength - Maximum length
@@ -30,7 +39,24 @@ function truncate(text, maxLength = 100) {
   return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text;
 }
 
+/**
+ * Parse timestamp string to seconds
+ * @param {string} str - Timestamp like "1:30", "90", "2:15:30"
+ * @returns {number|null} Seconds or null if invalid
+ */
+function parseTimestamp(str) {
+  const parts = str.split(':').map(p => parseInt(p, 10));
+  if (parts.some(isNaN)) return null;
+  
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+}
+
 module.exports = {
   formatDuration,
-  truncate
+  formatDurationMs,
+  truncate,
+  parseTimestamp
 };

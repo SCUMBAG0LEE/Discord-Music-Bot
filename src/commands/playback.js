@@ -127,28 +127,6 @@ const commands = {
     }
   },
 
-  // Loop
-  loop: {
-    data: new SlashCommandBuilder()
-      .setName('loop')
-      .setDescription('Toggle loop mode (off -> song -> queue -> off).'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      const mode = queue.setRepeatMode();
-      const modeText = ['➡️ Looping **disabled**', '🔂 Looping **current song**', '🔁 Looping **queue**'][mode];
-      return interaction.reply(modeText);
-    }
-  },
-
   // Skip (force)
   skip: {
     data: new SlashCommandBuilder()
@@ -168,61 +146,12 @@ const commands = {
       // Check permissions: requester or DJ
       const song = queue.songs[0];
       const isRequester = song.user && song.user.id === interaction.user.id;
-      if (!isRequester && !isDJ(interaction)) {
+      if (!isRequester && !isDJ(interaction.member, client)) {
         return interaction.reply({ content: 'You do not have permission to skip directly. Use /voteskip instead.', ephemeral: true });
       }
 
       await queue.skip();
       return interaction.reply('⏭️ Song skipped.');
-    }
-  },
-
-  // Vote Skip (simplified - DisTube does not have built-in vote system)
-  voteskip: {
-    data: new SlashCommandBuilder()
-      .setName('voteskip')
-      .setDescription('Vote to skip the current song.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || !queue.songs.length) {
-        return interaction.reply({ content: 'There is no song playing.' });
-      }
-
-      // Requester or DJ can skip immediately
-      const song = queue.songs[0];
-      const isRequester = song.user && song.user.id === interaction.user.id;
-      if (isRequester || isDJ(interaction)) {
-        await queue.skip();
-        return interaction.reply('⏭️ Song skipped.');
-      }
-
-      // For voting, we use a simple implementation with queue metadata
-      if (!queue.votes) queue.votes = new Set();
-      
-      if (queue.votes.has(interaction.user.id)) {
-        return interaction.reply({ content: 'You have already voted to skip this song.', ephemeral: true });
-      }
-      
-      queue.votes.add(interaction.user.id);
-      
-      // Calculate threshold (50% of voice channel members)
-      const voiceChannel = queue.voice.channel;
-      const members = voiceChannel.members.filter(m => !m.user.bot).size;
-      const threshold = Math.ceil(members / 2);
-      const current = queue.votes.size;
-      
-      if (current >= threshold) {
-        queue.votes.clear();
-        await queue.skip();
-        return interaction.reply('⏭️ Vote threshold reached (' + current + '/' + threshold + '). Skipping song.');
-      }
-
-      return interaction.reply('🗳️ Your vote has been registered. (' + current + '/' + threshold + ' votes)');
     }
   },
 
@@ -251,63 +180,6 @@ const commands = {
         return interaction.reply('⏮️ Playing previous song.');
       } catch (err) {
         return interaction.reply({ content: '❌ Could not play previous song: ' + err.message, ephemeral: true });
-      }
-    }
-  },
-
-  // Filters - audio filters
-  filters: {
-    data: new SlashCommandBuilder()
-      .setName('filters')
-      .setDescription('Apply audio filters to the playback.')
-      .addStringOption(option =>
-        option.setName('filter')
-          .setDescription('Filter to apply')
-          .setRequired(true)
-          .addChoices(
-            { name: '🔇 Clear All Filters', value: 'clear' },
-            { name: '🎸 Bass Boost', value: 'bassboost' },
-            { name: '🎺 3D', value: '3d' },
-            { name: '🌀 Vaporwave', value: 'vaporwave' },
-            { name: '🐿️ Nightcore', value: 'nightcore' },
-            { name: '🔊 Echo', value: 'echo' },
-            { name: '🔁 Reverse', value: 'reverse' },
-            { name: '🎵 Karaoke', value: 'karaoke' },
-            { name: '🔉 Surround', value: 'surround' },
-            { name: '🐢 Slow', value: 'slow' },
-            { name: '⚡ Speed Up', value: 'fast' }
-          )
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      const filter = interaction.options.getString('filter');
-      
-      try {
-        if (filter === 'clear') {
-          // DisTube v5 uses filters.clear() or setting filters to empty array
-          queue.filters.clear();
-          return interaction.reply('🔇 All filters cleared.');
-        }
-
-        // Toggle filter
-        if (queue.filters.has(filter)) {
-          queue.filters.remove(filter);
-          return interaction.reply('🎛️ Filter **' + filter + '** disabled.');
-        } else {
-          queue.filters.add(filter);
-          return interaction.reply('🎛️ Filter **' + filter + '** enabled.');
-        }
-      } catch (err) {
-        return interaction.reply({ content: '❌ Could not apply filter: ' + err.message, ephemeral: true });
       }
     }
   }

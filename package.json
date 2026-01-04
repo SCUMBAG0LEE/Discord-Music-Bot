@@ -1,7 +1,7 @@
 {
   "name": "discord-music-bot",
-  "version": "4.4.2",
-  "description": "A feature-rich Discord music bot supporting YouTube, Spotify, SoundCloud, and Radio",
+  "version": "5.0.0",
+  "description": "A feature-rich Discord music bot using DisTube + yt-dlp",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -16,11 +16,18 @@
     "@discordjs/voice": "^0.18.0",
     "@distube/soundcloud": "^2.0.4",
     "@distube/spotify": "^2.0.2",
-    "@noble/ciphers": "^1.2.1",
     "chalk": "^4.1.2",
     "discord.js": "^14.19.2",
     "distube": "^5.2.3",
-    "dotenv": "^16.5.0",
-    "youtubei.js": "^16.0.1"
-  }
+    "dotenv": "^16.5.0"
+  },
+  "keywords": [
+    "discord",
+    "music",
+    "bot",
+    "youtube",
+    "spotify",
+    "yt-dlp"
+  ],
+  "license": "MIT"
 }
