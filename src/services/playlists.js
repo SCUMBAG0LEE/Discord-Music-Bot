@@ -1,4 +1,5 @@
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const { logger } = require('../utils/logger');
 
@@ -27,6 +28,23 @@ async function ensureDirectory() {
 function getPlaylistPath(userId, playlistName) {
   const safeName = playlistName.toLowerCase().replace(/[^a-z0-9]/g, '_');
   return path.join(PLAYLISTS_DIR, `${userId}_${safeName}.json`);
+}
+
+/**
+ * Get playlist synchronously (for quick checks)
+ * @param {string} userId - Discord user ID  
+ * @param {string} name - Playlist name
+ * @returns {Object|null}
+ */
+function getPlaylist(userId, name) {
+  try {
+    const filePath = getPlaylistPath(userId, name);
+    if (!fsSync.existsSync(filePath)) return null;
+    const data = fsSync.readFileSync(filePath, 'utf-8');
+    return JSON.parse(data);
+  } catch (err) {
+    return null;
+  }
 }
 
 /**
@@ -177,6 +195,7 @@ async function appendToPlaylist(userId, name, newSongs) {
 module.exports = {
   savePlaylist,
   loadPlaylist,
+  getPlaylist,
   deletePlaylist,
   listPlaylists,
   appendToPlaylist,

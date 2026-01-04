@@ -200,12 +200,12 @@ const commands = {
 
     async autocomplete(interaction) {
       const focusedValue = interaction.options.getFocused().toLowerCase();
-      const playlists = listPlaylists(interaction.guildId);
+      const { playlists } = await listPlaylists(interaction.user.id);
       
-      const filtered = playlists
+      const filtered = (playlists || [])
         .filter(p => p.name.toLowerCase().includes(focusedValue))
         .slice(0, 25)
-        .map(p => ({ name: `${p.name} (${p.trackCount} tracks)`, value: p.name }));
+        .map(p => ({ name: `${p.name} (${p.songCount} tracks)`, value: p.name }));
       
       await interaction.respond(filtered);
     },
@@ -218,14 +218,15 @@ const commands = {
       const playlistName = interaction.options.getString('playlist');
       
       if (playlistName) {
-        // Verify playlist exists
-        const playlist = getPlaylist(interaction.guildId, playlistName);
+        // Verify playlist exists (check user's playlists)
+        const playlist = getPlaylist(interaction.user.id, playlistName);
         if (!playlist) {
           return interaction.reply({ content: `Playlist **${playlistName}** not found.`, ephemeral: true });
         }
         
-        setSetting(interaction.guildId, 'autoPlaylist', playlistName);
-        return interaction.reply(`✅ Auto-playlist set to **${playlistName}** (${playlist.tracks?.length || 0} tracks).\n\nWhen the queue ends, this playlist will automatically start.`);
+        // Store both playlist name and user ID for auto-playlist
+        setSetting(interaction.guildId, 'autoPlaylist', { name: playlistName, userId: interaction.user.id });
+        return interaction.reply(`✅ Auto-playlist set to **${playlistName}** (${playlist.songs?.length || 0} tracks).\n\nWhen the queue ends, this playlist will automatically start.`);
       } else {
         setSetting(interaction.guildId, 'autoPlaylist', null);
         return interaction.reply('✅ Auto-playlist disabled.');
@@ -300,7 +301,7 @@ const commands = {
           },
           { 
             name: '🎵 Auto-Playlist', 
-            value: settings.autoPlaylist || 'Disabled',
+            value: settings.autoPlaylist?.name || 'Disabled',
             inline: true 
           },
           { 

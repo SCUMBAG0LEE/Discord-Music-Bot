@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js');
 const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
 const { truncate, formatDuration } = require('../utils/formatters');
-const { getInnertube } = require('../plugins/YouTubeJsPlugin');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -27,30 +26,27 @@ module.exports = {
 
     const query = interaction.options.getString('query');
     
-    // Use YouTube.js search
+    // Use yt-dlp plugin for YouTube search
     let results;
     try {
-      const yt = await getInnertube();
-      const searchResults = await yt.search(query, { type: 'video' });
+      // Get the yt-dlp plugin stored on distube instance
+      const ytdlpPlugin = client.distube.ytdlpPlugin;
+      if (!ytdlpPlugin) {
+        return interaction.editReply({ content: '❌ Search functionality not available (yt-dlp plugin not found)' });
+      }
       
-      // Extract video info from results
-      results = (searchResults.videos || []).slice(0, 5).map(video => ({
-        name: video.title?.text || video.title || 'Unknown',
-        url: `https://www.youtube.com/watch?v=${video.id}`,
-        duration: video.duration?.seconds || 0,
-        uploader: { name: video.author?.name || 'Unknown' }
-      }));
+      results = await ytdlpPlugin.search(query, 10);
     } catch (err) {
       return interaction.editReply({ content: '❌ Search failed: ' + err.message });
     }
 
-    if (!results.length) {
+    if (!results || !results.length) {
       return interaction.editReply({ content: '🔍 No results found.' });
     }
 
-    const options = results.map((video, index) => ({
-      label: truncate(video.name, 100),
-      description: truncate(`${video.uploader?.name || 'Unknown'} • ${formatDuration(video.duration)}`, 100),
+    const options = results.slice(0, 10).map((video, index) => ({
+      label: truncate(video.title || 'Unknown', 100),
+      description: truncate(`${video.channel || 'Unknown'} • ${video.durationFormatted || formatDuration(video.duration)}`, 100),
       value: index.toString(),
     }));
 
@@ -81,7 +77,7 @@ module.exports = {
           textChannel: interaction.channel,
           member: interaction.member
         });
-        await i.update({ content: '▶️ Playing: **' + selected.name + '**', components: [] });
+        await i.update({ content: '▶️ Playing: **' + selected.title + '**', components: [] });
       } catch (err) {
         await i.update({ content: '❌ Failed to play: ' + err.message, components: [] });
       }

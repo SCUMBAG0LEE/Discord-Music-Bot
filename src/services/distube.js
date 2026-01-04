@@ -9,6 +9,7 @@ const { SpotifyPlugin } = require('@distube/spotify');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
 const { logger } = require('../utils/logger');
 const { loadSettings } = require('./serverSettings');
+const { getPlaylist } = require('./playlists');
 
 // FFmpeg filter presets for audio effects
 const filterPresets = {
@@ -45,7 +46,9 @@ function initialize(client) {
   const plugins = [];
 
   // yt-dlp plugin - handles all YouTube playback (most reliable)
-  plugins.push(new YtDlpPlugin());
+  // Store reference for search functionality
+  const ytdlpPlugin = new YtDlpPlugin();
+  plugins.push(ytdlpPlugin);
   logger.info('DisTube', 'Using yt-dlp for YouTube playback');
 
   // Add Spotify plugin - will use yt-dlp for search since it's first
@@ -62,7 +65,7 @@ function initialize(client) {
     logger.warn('DisTube', 'Spotify credentials not configured - Spotify support disabled');
   }
 
-  // SoundCloud plugin
+  // SoundCloud plugin - only for direct SoundCloud URLs, not for search
   plugins.push(new SoundCloudPlugin());
 
   // Create DisTube instance with filter presets
@@ -87,6 +90,9 @@ function initialize(client) {
       filters: filterPresets
     }
   });
+
+  // Store yt-dlp plugin reference on distube instance for /search command
+  distube.ytdlpPlugin = ytdlpPlugin;
 
   distube.setMaxListeners(20);
   setupEvents(distube, client);
@@ -173,8 +179,34 @@ function setupEvents(distube, client) {
         client.startAloneTimeout(queue);
       }
     })
-    .on(Events.FINISH, queue => {
+    .on(Events.FINISH, async queue => {
       logger.player(queue.id, 'Queue finished');
+      
+      // Check for auto-playlist
+      const settings = loadSettings(queue.id);
+      if (settings.autoPlaylist?.name && settings.autoPlaylist?.userId) {
+        const playlist = getPlaylist(settings.autoPlaylist.userId, settings.autoPlaylist.name);
+        if (playlist?.songs?.length > 0) {
+          logger.info('DisTube', `Auto-playing playlist: ${settings.autoPlaylist.name}`);
+          queue.textChannel?.send(`📻 Auto-playing playlist: **${settings.autoPlaylist.name}**`);
+          
+          // Play the first song and add the rest
+          try {
+            const songs = playlist.songs;
+            for (const song of songs) {
+              await distube.play(queue.voiceChannel, song.url, {
+                textChannel: queue.textChannel,
+                member: queue.clientMember
+              });
+            }
+            return; // Don't send "queue finished" message
+          } catch (err) {
+            logger.error('DisTube', 'Auto-playlist failed', err);
+            queue.textChannel?.send('❌ Failed to start auto-playlist: ' + err.message);
+          }
+        }
+      }
+      
       queue.textChannel?.send('✅ Queue finished! Use `/play` to add more songs.');
       
       // Reset bot status to default

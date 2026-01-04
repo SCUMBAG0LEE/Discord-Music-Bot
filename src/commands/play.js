@@ -76,11 +76,38 @@ module.exports = {
         return interaction.editReply('📡 Playing stream');
       }
 
-      // Let DisTube handle everything else (YouTube, Spotify, SoundCloud, search)
-      logger.urlDetection(query, 'distube-auto');
-      
       // Send initial "processing" message and store it for later editing
       const replyMsg = await interaction.editReply('🔍 Processing: **' + query.substring(0, 100) + '**...');
+
+      // Check if query is a URL (let DisTube handle URLs directly)
+      const isUrl = /^https?:\/\//.test(query);
+      
+      if (!isUrl) {
+        // For search terms, use yt-dlp directly to search YouTube
+        logger.urlDetection(query, 'youtube-search');
+        const ytdlpPlugin = distube.ytdlpPlugin;
+        
+        if (ytdlpPlugin) {
+          const results = await ytdlpPlugin.search(query, 1);
+          if (results && results.length > 0) {
+            // Play the first YouTube result
+            await distube.play(voiceChannel, results[0].url, {
+              textChannel: interaction.channel,
+              member: interaction.member,
+              position,
+              metadata: { 
+                replyMessage: replyMsg,
+                maxDuration: settings.maxDuration
+              }
+            });
+            return;
+          }
+        }
+        // Fall through to DisTube if yt-dlp search fails
+      }
+
+      // Let DisTube handle URLs (YouTube, Spotify, SoundCloud)
+      logger.urlDetection(query, 'distube-auto');
       
       await distube.play(voiceChannel, query, {
         textChannel: interaction.channel,

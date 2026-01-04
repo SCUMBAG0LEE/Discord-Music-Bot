@@ -8,8 +8,7 @@ const { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType } = re
 const fs = require('fs');
 const path = require('path');
 const { logger } = require('./utils/logger');
-const { loadSettings, canUseTextChannel, canUseVoiceChannel } = require('./services/serverSettings');
-const { getPlaylist } = require('./services/playlists');
+const { loadSettings, canUseTextChannel } = require('./services/serverSettings');
 const distubeService = require('./services/distube');
 
 // Parse activity type from string
