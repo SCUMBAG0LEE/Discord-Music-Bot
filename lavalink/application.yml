@@ -1,0 +1,125 @@
+server:
+  port: ${LAVALINK_PORT:2333}
+  address: ${LAVALINK_ADDRESS:0.0.0.0}
+  http2:
+    enabled: false
+
+lavalink:
+  plugins:
+    # YouTube plugin - handles all YouTube playback
+    - dependency: "dev.lavalink.youtube:youtube-plugin:+"
+      snapshot: false
+    # LavaSrc - Spotify, Apple Music, Deezer, Yandex support
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:+"
+      snapshot: false
+    # SponsorBlock - auto-skip sponsors in YouTube videos
+    - dependency: "com.github.topi314.sponsorblock:sponsorblock-plugin:+"
+      snapshot: false
+  server:
+    password: ${LAVALINK_PASSWORD:youshallnotpass}
+    sources:
+      youtube: false  # Disabled - using youtube-plugin instead
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+    filters:
+      volume: true
+      equalizer: true
+      karaoke: true
+      timescale: true
+      tremolo: true
+      vibrato: true
+      distortion: true
+      rotation: true
+      channelMix: true
+      lowPass: true
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: LOW
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    youtubePlaylistLoadLimit: 6
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+    gc-warnings: true
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    clients:
+      - IOS
+      - ANDROID_MUSIC
+      - TVHTML5EMBEDDED
+      - WEB
+    oauth:
+      enabled: false
+    # Uncomment and configure if you have issues:
+    # pot:
+    #   token: "your-po-token"
+    #   visitorData: "your-visitor-data"
+  
+  lavasrc:
+    providers:
+      - "ytsearch:\"%ISRC%\""
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: true
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+      youtube: true
+    spotify:
+      clientId: ${SPOTIFY_CLIENT_ID:}
+      clientSecret: ${SPOTIFY_CLIENT_SECRET:}
+      spDc: ""
+      countryCode: "US"
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
+  
+  sponsorblock:
+    servers:
+      - "https://sponsor.ajay.app"
+      - "https://sponsorblock.kavin.rocks"
+    categories:
+      - sponsor
+      - selfpromo
+      - interaction
+      - intro
+      - outro
+
+metrics:
+  prometheus:
+    enabled: false
+    endpoint: /metrics
+
+sentry:
+  dsn: ""
+  environment: ""
+
+logging:
+  file:
+    path: ./logs/
+  level:
+    root: INFO
+    lavalink: INFO
+  request:
+    enabled: true
+    includeClientInfo: true
+    includeHeaders: false
+    includeQueryString: true
+    includePayload: true
+    maxPayloadLength: 10000
+
+  logback:
+    rollingpolicy:
+      max-file-size: 1GB
+      max-history: 30

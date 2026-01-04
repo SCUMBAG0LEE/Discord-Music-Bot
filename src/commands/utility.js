@@ -1,78 +1,144 @@
-const { SlashCommandBuilder, REST, Routes } = require('discord.js');
-const { isGuildInteraction, isOwner } = require('../utils/permissions');
-const { logger } = require('../utils/logger');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const os = require('os');
+const { formatDuration } = require('../utils/formatters');
 
 const commands = {
-  // Help
   help: {
     data: new SlashCommandBuilder()
       .setName('help')
-      .setDescription('Show help for available commands.'),
+      .setDescription('Show all available commands'),
 
     async execute(interaction, client) {
-      const helpEmbed = {
-        color: 0x5865F2,
-        title: '🎵 Music Bot Commands',
-        fields: [
+      const embed = new EmbedBuilder()
+        .setTitle('🎵 Music Bot Commands')
+        .setColor('#5865F2')
+        .setDescription('A Discord music bot powered by Lavalink')
+        .addFields(
           {
-            name: '🎶 Playing Music',
-            value: '`/play` - Play from URL or search\n`/search` - Interactive search\n`/radio` - Radio station presets',
-            inline: true
-          },
-          {
-            name: '⏯️ Playback Control',
-            value: '`/pause` `/resume` `/stop`\n`/volume` - Set volume (0-200)\n`/seek` - Jump to timestamp\n`/replay` - Restart song',
-            inline: true
-          },
-          {
-            name: '⏭️ Skipping',
-            value: '`/skip` - Force skip (DJ)\n`/voteskip` - Vote to skip\n`/previous` - Previous song\n`/jump` - Jump to position',
-            inline: true
+            name: '🎶 Playback',
+            value: [
+              '`/play` - Play a song or playlist',
+              '`/pause` - Pause playback',
+              '`/resume` - Resume playback',
+              '`/stop` - Stop and disconnect',
+              '`/skip` - Skip current track',
+              '`/previous` - Play previous track',
+              '`/seek` - Seek to position',
+              '`/volume` - Adjust volume',
+              '`/nowplaying` - Show current track',
+              '`/loop` - Toggle loop mode',
+              '`/replay` - Replay current track'
+            ].join('\n'),
+            inline: false
           },
           {
             name: '📋 Queue',
-            value: '`/queue` - View queue\n`/nowplaying` - Now playing\n`/shuffle` `/clear`\n`/remove` `/move`',
-            inline: true
+            value: [
+              '`/queue` - Show the queue',
+              '`/shuffle` - Shuffle the queue',
+              '`/clear` - Clear the queue',
+              '`/remove` - Remove a track',
+              '`/move` - Move a track',
+              '`/jump` - Jump to a track',
+              '`/skipto` - Skip to a track'
+            ].join('\n'),
+            inline: false
           },
           {
-            name: '💾 Playlists',
-            value: '`/savelist` - Save queue\n`/loadlist` - Load playlist\n`/playlists` - Your playlists\n`/appendlist` - Add to playlist',
-            inline: true
+            name: '🎛️ Filters',
+            value: [
+              '`/filter` - Apply audio filter',
+              '`/clearfilter` - Clear all filters',
+              '`/filters` - Show available filters',
+              '`/speed` - Adjust playback speed',
+              '`/pitch` - Adjust audio pitch'
+            ].join('\n'),
+            inline: false
           },
           {
-            name: '⚙️ Settings & Effects',
-            value: '`/loop` - Toggle loop\n`/autoplay` - Auto-queue songs\n`/247` - Stay in channel\n`/filters` - Audio effects',
-            inline: true
+            name: '🔧 Utility',
+            value: [
+              '`/help` - Show this message',
+              '`/ping` - Check bot latency',
+              '`/stats` - Bot statistics'
+            ].join('\n'),
+            inline: false
           }
-        ],
-        footer: {
-          text: 'Supports YouTube, Spotify, SoundCloud & Radio streams!'
-        }
-      };
-
-      return interaction.reply({ embeds: [helpEmbed] });
+        )
+        .setFooter({ text: 'Powered by Lavalink' });
+      
+      return interaction.reply({ embeds: [embed] });
     }
   },
 
-  // Refresh Commands (Owner only)
-  refreshcommands: {
+  ping: {
     data: new SlashCommandBuilder()
-      .setName('refreshcommands')
-      .setDescription('Remove all global commands (Bot Owner only).'),
+      .setName('ping')
+      .setDescription('Check bot and Lavalink latency'),
 
     async execute(interaction, client) {
-      if (!isOwner(interaction.user.id)) {
-        return interaction.reply({ content: 'Only the bot owner can refresh commands.', ephemeral: true });
-      }
+      const start = Date.now();
+      await interaction.deferReply();
+      const latency = Date.now() - start;
+      
+      // Get Lavalink node info
+      const node = client.kazagumo.shoukaku.nodes.get('Main');
+      const lavalinkPing = node?.stats?.ping || 'N/A';
+      
+      const embed = new EmbedBuilder()
+        .setTitle('🏓 Pong!')
+        .setColor('#00FF00')
+        .addFields(
+          { name: 'Bot Latency', value: `${latency}ms`, inline: true },
+          { name: 'WebSocket', value: `${client.ws.ping}ms`, inline: true },
+          { name: 'Lavalink', value: `${lavalinkPing}ms`, inline: true }
+        );
+      
+      return interaction.editReply({ embeds: [embed] });
+    }
+  },
 
-      try {
-        const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
-        await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-        return interaction.reply('✅ All global commands have been removed. Changes may take up to an hour to propagate.');
-      } catch (error) {
-        logger.error('Utility', 'Error refreshing commands', error);
-        return interaction.reply({ content: 'There was an error refreshing commands.', ephemeral: true });
+  stats: {
+    data: new SlashCommandBuilder()
+      .setName('stats')
+      .setDescription('Show bot statistics'),
+
+    async execute(interaction, client) {
+      const node = client.kazagumo.shoukaku.nodes.get('Main');
+      const nodeStats = node?.stats;
+      
+      // Bot stats
+      const uptime = formatDuration(Math.floor(process.uptime() * 1000));
+      const memUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+      const guilds = client.guilds.cache.size;
+      const players = client.kazagumo.players.size;
+      
+      const embed = new EmbedBuilder()
+        .setTitle('📊 Bot Statistics')
+        .setColor('#5865F2')
+        .addFields(
+          { name: '⏱️ Uptime', value: uptime, inline: true },
+          { name: '💾 Memory', value: `${memUsage} MB`, inline: true },
+          { name: '🏠 Servers', value: `${guilds}`, inline: true },
+          { name: '🎵 Active Players', value: `${players}`, inline: true },
+          { name: '📡 Node.js', value: process.version, inline: true },
+          { name: '💻 Platform', value: `${os.platform()} ${os.arch()}`, inline: true }
+        );
+      
+      // Lavalink stats if available
+      if (nodeStats) {
+        embed.addFields(
+          { name: '\u200B', value: '**Lavalink Node**', inline: false },
+          { name: 'Players', value: `${nodeStats.players}`, inline: true },
+          { name: 'Playing', value: `${nodeStats.playingPlayers}`, inline: true },
+          { name: 'Uptime', value: formatDuration(nodeStats.uptime), inline: true },
+          { name: 'CPU Cores', value: `${nodeStats.cpu?.cores || 'N/A'}`, inline: true },
+          { name: 'CPU Load', value: `${((nodeStats.cpu?.systemLoad || 0) * 100).toFixed(1)}%`, inline: true },
+          { name: 'Memory', value: `${((nodeStats.memory?.used || 0) / 1024 / 1024).toFixed(0)} MB`, inline: true }
+        );
       }
+      
+      return interaction.reply({ embeds: [embed] });
     }
   }
 };

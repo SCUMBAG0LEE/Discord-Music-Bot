@@ -1,78 +1,75 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
-const { logger } = require('../utils/logger');
-const distubeService = require('../services/distube');
+const { formatDuration } = require('../utils/formatters');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('play')
-    .setDescription('Play from YouTube, Spotify, SoundCloud, or a direct URL/stream.')
+    .setDescription('Play music from YouTube, Spotify, SoundCloud, or search')
     .addStringOption(option =>
       option.setName('query')
-        .setDescription('URL, search term, or radio preset (lofi, jazz, classical, chillhop, synthwave)')
+        .setDescription('URL or search term')
         .setRequired(true)
     ),
 
   async execute(interaction, client) {
-    if (!isGuildInteraction(interaction)) {
-      return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-    }
-
-    const voiceChannel = getVoiceChannel(interaction.member);
+    const member = interaction.member;
+    const voiceChannel = member?.voice?.channel;
+    
     if (!voiceChannel) {
-      return interaction.reply({ content: 'You must join a voice channel first!', ephemeral: true });
+      return interaction.reply({ content: 'You must be in a voice channel!', ephemeral: true });
     }
 
     await interaction.deferReply();
 
     const query = interaction.options.getString('query');
-    const guildId = interaction.guildId;
-    const requesterId = interaction.user.id;
-
-    logger.command('play', requesterId, guildId, { query: query.substring(0, 100) });
+    const kazagumo = client.kazagumo;
 
     try {
-      const distube = client.distube;
+      // Get or create player
+      let player = kazagumo.players.get(interaction.guildId);
       
-      // Check for radio preset first
-      const presetUrl = distubeService.getRadioPreset(query);
-      if (presetUrl) {
-        logger.urlDetection(query, 'radio-preset');
-        await distube.play(voiceChannel, presetUrl, {
-          textChannel: interaction.channel,
-          member: interaction.member
+      if (!player) {
+        player = await kazagumo.createPlayer({
+          guildId: interaction.guildId,
+          textId: interaction.channelId,
+          voiceId: voiceChannel.id,
+          volume: 100,
+          deaf: true
         });
-        return interaction.editReply('📻 Playing radio: **' + query + '**');
       }
 
-      // Check if it is a direct stream URL
-      if (distubeService.isStreamUrl(query)) {
-        logger.urlDetection(query, 'stream');
-        await distube.play(voiceChannel, query, {
-          textChannel: interaction.channel,
-          member: interaction.member
-        });
-        return interaction.editReply('📡 Playing stream');
+      // Search for tracks
+      const result = await kazagumo.search(query, { requester: interaction.user });
+
+      if (!result.tracks.length) {
+        return interaction.editReply('❌ No results found.');
       }
 
-      // Let DisTube handle everything else (YouTube, Spotify, SoundCloud, search)
-      logger.urlDetection(query, 'distube-auto');
-      
-      // Send initial "processing" message and store it for later editing
-      const replyMsg = await interaction.editReply('🔍 Processing: **' + query.substring(0, 100) + '**...');
-      
-      await distube.play(voiceChannel, query, {
-        textChannel: interaction.channel,
-        member: interaction.member,
-        metadata: { replyMessage: replyMsg }
-      });
-      
-      // The PLAY_SONG event will update the message to "Now playing"
-      return;
+      // Handle playlist vs single track
+      if (result.type === 'PLAYLIST') {
+        for (const track of result.tracks) {
+          player.queue.add(track);
+        }
+        await interaction.editReply(`✅ Added playlist **${result.playlistName}** (${result.tracks.length} tracks)`);
+      } else {
+        const track = result.tracks[0];
+        player.queue.add(track);
+        
+        if (player.playing) {
+          await interaction.editReply(`✅ Added to queue: **${track.title}** - \`${formatDuration(track.length)}\``);
+        } else {
+          await interaction.editReply(`🎵 Now playing: **${track.title}** - \`${formatDuration(track.length)}\``);
+        }
+      }
+
+      // Start playing if not already
+      if (!player.playing && !player.paused) {
+        player.play();
+      }
 
     } catch (error) {
-      logger.error('Play', 'Command failed for query: ' + query.substring(0, 50), error);
-      return interaction.editReply({ content: '❌ Error: ' + error.message.slice(0, 200) });
+      console.error('Play error:', error);
+      return interaction.editReply(`❌ Error: ${error.message?.slice(0, 200) || 'Unknown error'}`);
     }
   }
 };
