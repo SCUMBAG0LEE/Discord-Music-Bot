@@ -6,15 +6,9 @@ settc, setvc, queuetype, skipratio, autoplaylist, songinstatus
 import discord
 from discord import app_commands
 from discord.ext import commands
-import os
 
 from services.storage import server_settings
-
-
-def is_owner(user_id: int) -> bool:
-    """Check if user is the bot owner."""
-    owner_id = os.getenv('OWNER_ID')
-    return owner_id and str(user_id) == owner_id
+from services.utils import is_owner
 
 
 class Admin(commands.Cog):
@@ -152,13 +146,11 @@ class Admin(commands.Cog):
             return await interaction.response.send_message("🔒 Owner only.", ephemeral=True)
         
         if name:
-            # Check if playlist exists
-            from pathlib import Path
-            playlists_dir = Path("data/playlists")
-            safe_name = "".join(c if c.isalnum() else "_" for c in name.lower())
-            path = playlists_dir / f"{interaction.user.id}_{safe_name}.json"
+            # Check if playlist exists using PlaylistService
+            from services.storage import playlist_service
+            playlist = playlist_service.get_playlist(interaction.user.id, name)
             
-            if not path.exists():
+            if not playlist:
                 return await interaction.response.send_message(f'Playlist "{name}" not found.', ephemeral=True)
             
             server_settings.set_setting(interaction.guild_id, 'auto_playlist', {

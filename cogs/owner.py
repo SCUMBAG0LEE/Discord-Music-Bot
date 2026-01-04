@@ -8,13 +8,8 @@ from discord import app_commands
 from discord.ext import commands
 import wavelink
 import aiohttp
-import os
 
-
-def is_owner(user_id: int) -> bool:
-    """Check if user is the bot owner."""
-    owner_id = os.getenv('OWNER_ID')
-    return owner_id and str(user_id) == owner_id
+from services.utils import is_owner
 
 
 class Owner(commands.Cog):

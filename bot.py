@@ -69,15 +69,8 @@ class Config:
 config = Config()
 
 
-def format_duration(ms: int) -> str:
-    """Format milliseconds to mm:ss or hh:mm:ss."""
-    seconds = ms // 1000
-    hours, remainder = divmod(seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    
-    if hours:
-        return f"{hours}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes}:{seconds:02d}"
+# Import shared utilities
+from services.utils import format_duration
 
 
 def get_activity_type(type_str: str) -> ActivityType:
@@ -243,7 +236,13 @@ class MusicBot(commands.Bot):
                 name=track.title[:128]
             ))
         
-        # Send now playing message
+        # Check if this track was started by a command (to avoid duplicate message)
+        # Commands set player.suppress_now_playing = True before calling play()
+        if getattr(player, 'suppress_now_playing', False):
+            player.suppress_now_playing = False
+            return
+        
+        # Send now playing message for automatic queue progression
         if hasattr(player, 'text_channel') and player.text_channel:
             try:
                 embed = discord.Embed(
@@ -388,9 +387,7 @@ class MusicBot(commands.Bot):
     
     async def load_autoplaylist(self, player: wavelink.Player, guild_id: int):
         """Load autoplaylist if configured for this guild."""
-        from services.storage import server_settings
-        import json
-        from pathlib import Path
+        from services.storage import server_settings, playlist_service
         
         settings = server_settings.get_settings(guild_id)
         auto_playlist = settings.get('auto_playlist')
@@ -404,28 +401,23 @@ class MusicBot(commands.Bot):
         if not user_id or not name:
             return
         
-        # Find playlist file
-        playlists_dir = Path("data/playlists")
-        safe_name = "".join(c if c.isalnum() else "_" for c in name.lower())
-        path = playlists_dir / f"{user_id}_{safe_name}.json"
+        # Get playlist using PlaylistService
+        playlist_data = playlist_service.get_playlist(user_id, name)
         
-        if not path.exists():
+        if not playlist_data:
+            return
+        
+        tracks = playlist_data.get('tracks', [])
+        if not tracks:
             return
         
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                playlist_data = json.load(f)
-            
-            tracks = playlist_data.get("tracks", [])
-            if not tracks:
-                return
-            
             logger.info(f"Loading autoplaylist '{name}' for guild {guild_id}")
             
             added = 0
             for track_data in tracks:
                 try:
-                    results = await wavelink.Playable.search(track_data.get("uri", track_data.get("title", "")))
+                    results = await wavelink.Playable.search(track_data.get("uri") or track_data.get("title", ""))
                     if results:
                         track = results[0] if not isinstance(results, wavelink.Playlist) else results.tracks[0]
                         await player.queue.put_wait(track)

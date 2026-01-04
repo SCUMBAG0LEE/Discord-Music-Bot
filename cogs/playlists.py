@@ -12,18 +12,9 @@ from typing import cast
 import logging
 
 from services.storage import playlist_service
+from services.utils import format_duration
 
 logger = logging.getLogger('MusicBot.Playlists')
-
-
-def format_duration(ms: int) -> str:
-    """Format milliseconds to mm:ss or hh:mm:ss."""
-    seconds = ms // 1000
-    hours, remainder = divmod(seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes}:{seconds:02d}"
 
 
 class Playlists(commands.Cog):
@@ -123,6 +114,7 @@ class Playlists(commands.Cog):
             
             # Start playing if not already
             if not player.playing and player.queue:
+                player.suppress_now_playing = True
                 await player.play(player.queue.get())
             
             await interaction.followup.send(

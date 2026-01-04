@@ -10,20 +10,11 @@ from discord.ext import commands
 import wavelink
 from typing import cast
 import logging
-import os
 import platform
 
+from services.utils import format_duration
+
 logger = logging.getLogger('MusicBot.Utility')
-
-
-def format_duration(ms: int) -> str:
-    """Format milliseconds to mm:ss or hh:mm:ss."""
-    seconds = ms // 1000
-    hours, remainder = divmod(seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes}:{seconds:02d}"
 
 
 class Utility(commands.Cog):
