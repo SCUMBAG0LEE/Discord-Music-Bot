@@ -1,5 +1,6 @@
 """
 Music cog - Core playback commands
+Mirrors JS play.js, playback.js, and settings.js commands
 Handles play, pause, resume, skip, stop, volume, seek, etc.
 """
 
@@ -17,41 +18,6 @@ from services.storage import server_settings
 logger = logging.getLogger('MusicBot.Music')
 
 
-def is_owner(user_id: int) -> bool:
-    """Check if user is bot owner."""
-    owner_id = os.getenv('OWNER_ID')
-    return owner_id and str(user_id) == owner_id
-
-
-def is_dj(member: discord.Member) -> bool:
-    """Check if member has DJ permissions."""
-    if is_owner(member.id):
-        return True
-    if member.guild_permissions.administrator:
-        return True
-    if member.guild_permissions.manage_guild:
-        return True
-    
-    dj_role_id = server_settings.get_setting(member.guild.id, 'dj_role_id')
-    if dj_role_id:
-        return any(str(r.id) == dj_role_id for r in member.roles)
-    
-    return True  # No DJ role set = everyone is DJ
-
-
-def can_dj(interaction: discord.Interaction, player: wavelink.Player) -> bool:
-    """Check if user can use DJ commands (DJ, owner, or requester)."""
-    member = cast(discord.Member, interaction.user)
-    if is_dj(member):
-        return True
-    
-    # Check if user is the requester of current track
-    if player.current and hasattr(player.current, 'requester'):
-        return player.current.requester == member
-    
-    return False
-
-
 def format_duration(ms: int) -> str:
     """Format milliseconds to mm:ss or hh:mm:ss."""
     seconds = ms // 1000
@@ -62,6 +28,65 @@ def format_duration(ms: int) -> str:
     return f"{minutes}:{seconds:02d}"
 
 
+def parse_timestamp(timestamp: str) -> int | None:
+    """Parse timestamp string to seconds. Returns None if invalid."""
+    try:
+        parts = timestamp.split(':')
+        parts = [int(p) for p in parts]
+        
+        if len(parts) == 1:
+            return parts[0]
+        elif len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        elif len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        return None
+    except (ValueError, IndexError):
+        return None
+
+
+def is_owner(user_id: int) -> bool:
+    """Check if user is bot owner."""
+    owner_id = os.getenv('OWNER_ID')
+    return owner_id and str(user_id) == owner_id
+
+
+def is_dj(member: discord.Member, bot: commands.Bot = None) -> bool:
+    """Check if member has DJ permissions."""
+    if is_owner(member.id):
+        return True
+    if member.guild_permissions.administrator:
+        return True
+    if member.guild_permissions.manage_guild:
+        return True
+    
+    # Check per-server DJ role first
+    dj_role_id = server_settings.get_setting(member.guild.id, 'dj_role_id')
+    
+    # Fall back to global DJ role from config
+    if not dj_role_id and bot and hasattr(bot, 'config'):
+        dj_role_id = bot.config.dj_role_id
+    
+    if dj_role_id:
+        return any(str(r.id) == str(dj_role_id) for r in member.roles)
+    
+    return True  # No DJ role set = everyone is DJ
+
+
+def can_dj(interaction: discord.Interaction, player: wavelink.Player) -> bool:
+    """Check if user can use DJ commands (DJ, owner, or requester)."""
+    member = cast(discord.Member, interaction.user)
+    
+    if is_dj(member, interaction.client):
+        return True
+    
+    # Check if user is the requester of current track
+    if player.current and hasattr(player.current, 'requester'):
+        return player.current.requester == member
+    
+    return False
+
+
 class Music(commands.Cog):
     """Core music playback commands."""
     
@@ -69,10 +94,11 @@ class Music(commands.Cog):
         self.bot = bot
     
     def _get_fair_position(self, queue: wavelink.Queue, requester_id: int) -> int:
-        """Find position for fair queue insertion."""
+        """Find position for fair queue insertion - mirrors JS getFairPosition."""
         if len(queue) == 0:
             return 0
         
+        # Find the last track by this user
         last_user_index = -1
         for i in range(len(queue) - 1, -1, -1):
             track = queue[i]
@@ -81,14 +107,22 @@ class Music(commands.Cog):
                 break
         
         if last_user_index == -1:
+            # User has no tracks, add at the end
             return len(queue)
         
+        # Find next position after the user's last track where another user's track is
         for i in range(last_user_index + 1, len(queue)):
             track = queue[i]
             if hasattr(track, 'requester') and track.requester and track.requester.id != requester_id:
                 return i
         
         return len(queue)
+    
+    def _is_too_long(self, track, max_duration: int) -> bool:
+        """Check if track exceeds max duration (0 = unlimited)."""
+        if max_duration <= 0:
+            return False
+        return track.length > max_duration * 1000
     
     async def ensure_voice(self, interaction: discord.Interaction) -> Optional[wavelink.Player]:
         """Ensure user is in voice and bot can connect. Returns player or None."""
@@ -105,7 +139,8 @@ class Music(commands.Cog):
         if not server_settings.can_use_voice_channel(interaction.guild_id, member.voice.channel.id):
             settings = server_settings.get_settings(interaction.guild_id)
             await interaction.response.send_message(
-                f"❌ Bot is locked to <#{settings['voice_channel_id']}>.", ephemeral=True
+                f"❌ Bot is locked to <#{settings['voice_channel_id']}>. Please join that channel.", 
+                ephemeral=True
             )
             return None
         
@@ -116,8 +151,21 @@ class Music(commands.Cog):
             try:
                 player = await member.voice.channel.connect(cls=wavelink.Player)
                 player.text_channel = interaction.channel
-                player.autoplay = wavelink.AutoPlayMode.partial  # Enable autoplay
+                player.autoplay = wavelink.AutoPlayMode.partial
                 player.skip_votes = set()
+                
+                # Set default volume from config
+                if hasattr(self.bot, 'config'):
+                    volume = server_settings.get_effective_volume(
+                        interaction.guild_id, 
+                        self.bot.config.default_volume
+                    )
+                    await player.set_volume(volume)
+                
+                # Load autoplaylist if configured
+                if hasattr(self.bot, 'load_autoplaylist'):
+                    await self.bot.load_autoplaylist(player, interaction.guild_id)
+                    
             except discord.ClientException:
                 await interaction.response.send_message("Failed to connect to voice channel.", ephemeral=True)
                 return None
@@ -132,10 +180,10 @@ class Music(commands.Cog):
         
         return player
     
-    @app_commands.command(name="play", description="Play a song from YouTube, Spotify, SoundCloud, or search")
+    @app_commands.command(name="play", description="Play music from YouTube, Spotify, SoundCloud, or search")
     @app_commands.describe(query="URL or search term")
     async def play(self, interaction: discord.Interaction, query: str):
-        """Play a track or add it to the queue."""
+        """Play a track or add it to the queue - mirrors JS play.js."""
         player = await self.ensure_voice(interaction)
         if not player:
             return
@@ -143,42 +191,75 @@ class Music(commands.Cog):
         await interaction.response.defer()
         
         settings = server_settings.get_settings(interaction.guild_id)
+        config = getattr(self.bot, 'config', None)
+        max_queue = config.max_queue_size if config else 0
+        max_duration = config.max_duration if config else 0
         
         try:
+            # Check max queue size before searching
+            if max_queue > 0 and len(player.queue) >= max_queue:
+                return await interaction.followup.send(f"❌ Queue is full (max {max_queue} tracks).")
+            
             tracks = await wavelink.Playable.search(query)
             
             if not tracks:
-                await interaction.followup.send("❌ No results found.")
-                return
+                return await interaction.followup.send("❌ No results found.")
             
             # Handle playlist vs single track
             if isinstance(tracks, wavelink.Playlist):
+                added = 0
+                skipped = 0
+                
                 for track in tracks.tracks:
+                    # Check queue limit
+                    if max_queue > 0 and len(player.queue) >= max_queue:
+                        break
+                    
+                    # Check duration limit
+                    if self._is_too_long(track, max_duration):
+                        skipped += 1
+                        continue
+                    
                     track.requester = interaction.user
+                    
+                    # Use fair position for fair queue mode
                     if settings['queue_type'] == 'fair':
                         pos = self._get_fair_position(player.queue, interaction.user.id)
                         player.queue.put_at(pos, track)
                     else:
                         await player.queue.put_wait(track)
+                    
+                    added += 1
                 
-                msg = f"✅ Added playlist **{tracks.name}** ({len(tracks.tracks)} tracks)"
+                msg = f"✅ Added **{added}** tracks from **{tracks.name}**"
+                if skipped > 0:
+                    msg += f" ({skipped} skipped - too long)"
+                if max_queue > 0 and len(player.queue) >= max_queue:
+                    msg += " (queue full)"
                 if settings['queue_type'] == 'fair':
                     msg += " 🔄"
+                
                 await interaction.followup.send(msg)
             else:
                 track = tracks[0]
+                
+                # Check duration limit
+                if self._is_too_long(track, max_duration):
+                    return await interaction.followup.send(f"❌ Track is too long (max {max_duration}s).")
+                
                 track.requester = interaction.user
                 
+                # Use fair position for fair queue mode
                 if settings['queue_type'] == 'fair' and len(player.queue) > 0:
                     pos = self._get_fair_position(player.queue, interaction.user.id)
                     player.queue.put_at(pos, track)
                     
                     if player.playing:
                         await interaction.followup.send(
-                            f"✅ Added to queue (pos {pos + 2}): **{track.title}** 🔄"
+                            f"✅ Added to queue (position {pos + 2}): **{track.title}** - `{format_duration(track.length)}` 🔄"
                         )
                     else:
-                        await interaction.followup.send(f"🎵 Now playing: **{track.title}**")
+                        await interaction.followup.send(f"🎵 Now playing: **{track.title}** - `{format_duration(track.length)}`")
                 else:
                     await player.queue.put_wait(track)
                     
@@ -192,7 +273,7 @@ class Music(commands.Cog):
                         )
             
             # Start playing if not already
-            if not player.playing:
+            if not player.playing and player.queue:
                 await player.play(player.queue.get())
                 
         except wavelink.LavalinkLoadException as e:
@@ -354,12 +435,11 @@ class Music(commands.Cog):
     
     @app_commands.command(name="skip", description="Skip the current song (DJ/requester can force skip)")
     async def skip(self, interaction: discord.Interaction):
-        """Skip to the next track."""
+        """Skip to the next track - DJ/requester can force, others vote."""
         player = cast(wavelink.Player, interaction.guild.voice_client)
         
         if not player or not player.playing:
-            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
-            return
+            return await interaction.response.send_message("Nothing is playing.", ephemeral=True)
         
         # DJ, owner, or requester can force skip
         if can_dj(interaction, player):
@@ -376,8 +456,11 @@ class Music(commands.Cog):
         
         player.skip_votes.add(member.id)
         
+        # Calculate votes needed with config
         listeners = sum(1 for m in player.channel.members if not m.bot)
-        skip_ratio = server_settings.get_effective_skip_ratio(interaction.guild_id, 0.5)
+        config = getattr(self.bot, 'config', None)
+        global_ratio = config.skip_ratio if config else 0.5
+        skip_ratio = server_settings.get_effective_skip_ratio(interaction.guild_id, global_ratio)
         threshold = max(1, int(listeners * skip_ratio + 0.5))
         current = len(player.skip_votes)
         
@@ -396,8 +479,8 @@ class Music(commands.Cog):
         if not player or not player.playing:
             return await interaction.response.send_message("Nothing is playing.", ephemeral=True)
         
-        if not is_dj(cast(discord.Member, interaction.user)):
-            return await interaction.response.send_message("🔒 DJ only.", ephemeral=True)
+        if not is_dj(cast(discord.Member, interaction.user), self.bot):
+            return await interaction.response.send_message("🔒 This command requires DJ permissions.", ephemeral=True)
         
         title = player.current.title
         await player.skip()
@@ -409,8 +492,7 @@ class Music(commands.Cog):
         player = cast(wavelink.Player, interaction.guild.voice_client)
         
         if not player or not player.playing:
-            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
-            return
+            return await interaction.response.send_message("Nothing is playing.", ephemeral=True)
         
         member = cast(discord.Member, interaction.user)
         
@@ -418,13 +500,15 @@ class Music(commands.Cog):
             player.skip_votes = set()
         
         if member.id in player.skip_votes:
-            await interaction.response.send_message("You already voted to skip.", ephemeral=True)
-            return
+            return await interaction.response.send_message("You already voted to skip.", ephemeral=True)
         
         player.skip_votes.add(member.id)
         
+        # Calculate votes needed with config
         listeners = sum(1 for m in player.channel.members if not m.bot)
-        skip_ratio = server_settings.get_effective_skip_ratio(interaction.guild_id, 0.5)
+        config = getattr(self.bot, 'config', None)
+        global_ratio = config.skip_ratio if config else 0.5
+        skip_ratio = server_settings.get_effective_skip_ratio(interaction.guild_id, global_ratio)
         threshold = max(1, int(listeners * skip_ratio + 0.5))
         current = len(player.skip_votes)
         
@@ -434,7 +518,7 @@ class Music(commands.Cog):
             await player.skip()
             await interaction.response.send_message(f"⏭️ Vote passed! Skipped **{title}**")
         else:
-            await interaction.response.send_message(f"🗳️ Skip vote: **{current}/{threshold}**")
+            await interaction.response.send_message(f"🗳️ Skip vote: **{current}/{threshold}** votes")
     
     @app_commands.command(name="stop", description="Stop playback and clear the queue")
     async def stop(self, interaction: discord.Interaction):
@@ -448,9 +532,9 @@ class Music(commands.Cog):
         await player.disconnect()
         await interaction.response.send_message("⏹️ Stopped and disconnected.")
     
-    @app_commands.command(name="volume", description="Set the playback volume (0-200)")
-    @app_commands.describe(level="Volume level (0-200, default is 100)")
-    async def volume(self, interaction: discord.Interaction, level: app_commands.Range[int, 0, 200]):
+    @app_commands.command(name="volume", description="Set playback volume (0-150)")
+    @app_commands.describe(level="Volume level (0-150)")
+    async def volume(self, interaction: discord.Interaction, level: app_commands.Range[int, 0, 150]):
         """Set playback volume."""
         player = cast(wavelink.Player, interaction.guild.voice_client)
         

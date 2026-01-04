@@ -121,36 +121,50 @@ class Owner(commands.Cog):
         if not is_owner(interaction.user.id):
             return await interaction.response.send_message("🔒 Owner only.", ephemeral=True)
         
-        embed = discord.Embed(title="🔧 Debug Info", color=discord.Color.blue())
+        embed = discord.Embed(title="🔧 Debug Information", color=0xFF6B6B)
         
         # Bot stats
         guilds = len(self.bot.guilds)
         voice_connections = len(self.bot.voice_clients)
         total_users = sum(g.member_count or 0 for g in self.bot.guilds)
+        import time
+        uptime = int(time.time() - getattr(self.bot, 'start_time', time.time()))
         
         embed.add_field(
-            name="Bot Stats",
-            value=f"Servers: {guilds}\nUsers: {total_users:,}\nVoice: {voice_connections}\nLatency: {self.bot.latency * 1000:.0f}ms",
+            name="Bot",
+            value=f"User: {self.bot.user}\nID: {self.bot.user.id}\nGuilds: {guilds}\nUptime: {uptime}s",
             inline=True
         )
+        
+        # Config
+        config = getattr(self.bot, 'config', None)
+        if config:
+            config_info = [
+                f"Owner: {config.owner_id or 'Not set'}",
+                f"DJ Role: {config.dj_role_id or 'Not set'}",
+                f"Default Volume: {config.default_volume}%",
+                f"Max Queue: {config.max_queue_size or 'Unlimited'}",
+                f"Max Duration: {config.max_duration or 'Unlimited'}s",
+                f"Skip Ratio: {int(config.skip_ratio * 100)}%"
+            ]
+            embed.add_field(name="Config", value="\n".join(config_info), inline=True)
         
         # Lavalink
         nodes = wavelink.Pool.nodes
-        nodes_info = []
+        node_info = []
         for identifier, node in nodes.items():
-            status = "🟢" if node.status.is_connected else "🔴"
-            nodes_info.append(f"{status} {identifier}")
+            status = "Connected" if node.status.is_connected else "Disconnected"
+            node_info.append(f"Node: {identifier}")
+            node_info.append(f"State: {status}")
+            node_info.append(f"Players: {len(self.bot.voice_clients)}")
         
         embed.add_field(
             name="Lavalink",
-            value="\n".join(nodes_info) if nodes_info else "No nodes",
+            value="\n".join(node_info) if node_info else "No nodes",
             inline=True
         )
         
-        # Cogs
-        cogs = list(self.bot.cogs.keys())
-        embed.add_field(name="Loaded Cogs", value=", ".join(cogs), inline=False)
-        
+        embed.timestamp = discord.utils.utcnow()
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 

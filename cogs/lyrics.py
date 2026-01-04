@@ -117,20 +117,26 @@ class Lyrics(commands.Cog):
         artist, song = self._clean_title(search_query)
         display_title = f"{artist} - {song}" if artist else song
         
-        # Split if too long
+        # Clean up lyrics
+        lyrics = lyrics.replace('\r\n', '\n').strip()
+        lyrics = re.sub(r'\n{3,}', '\n\n', lyrics)
+        
+        # Split if too long - by paragraphs like JS version
         if len(lyrics) > 4000:
             chunks = []
+            paragraphs = lyrics.split('\n\n')
             current = ""
             
-            for line in lyrics.split('\n'):
-                if len(current) + len(line) + 1 > 4000:
-                    chunks.append(current)
-                    current = line
+            for para in paragraphs:
+                if len(current) + len(para) + 2 > 4000:
+                    if current:
+                        chunks.append(current.strip())
+                    current = para
                 else:
-                    current += '\n' + line if current else line
+                    current += ('\n\n' + para) if current else para
             
             if current:
-                chunks.append(current)
+                chunks.append(current.strip())
             
             embed = discord.Embed(
                 title=f"🎵 {display_title}",

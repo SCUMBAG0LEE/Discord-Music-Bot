@@ -203,6 +203,23 @@ class Filters(commands.Cog):
         await player.set_filters(filters)
         await interaction.response.send_message(f"🎛️ Equalizer set to **{preset.title()}**")
     
+    @app_commands.command(name="clearfilter", description="Clear all audio filters")
+    async def clearfilter(self, interaction: discord.Interaction):
+        """Clear all active filters."""
+        player = await self.get_player(interaction)
+        if not player:
+            return
+        
+        filters = player.filters
+        filters.reset()
+        await player.set_filters(filters)
+        
+        # Clear active filters tracking
+        if hasattr(player, 'active_filters'):
+            player.active_filters.clear()
+        
+        await interaction.response.send_message("🔇 Cleared all filters!")
+    
     @app_commands.command(name="speed", description="Set playback speed")
     @app_commands.describe(speed="Speed multiplier (0.5 to 2.0)")
     async def speed(self, interaction: discord.Interaction, speed: app_commands.Range[float, 0.5, 2.0]):
@@ -215,7 +232,7 @@ class Filters(commands.Cog):
         filters.timescale.set(speed=speed)
         await player.set_filters(filters)
         
-        await interaction.response.send_message(f"⚡ Playback speed set to **{speed}x**")
+        await interaction.response.send_message(f"⏩ Set playback speed to **{speed}x**")
     
     @app_commands.command(name="pitch", description="Set audio pitch")
     @app_commands.describe(pitch="Pitch multiplier (0.5 to 2.0)")
@@ -229,7 +246,7 @@ class Filters(commands.Cog):
         filters.timescale.set(pitch=pitch)
         await player.set_filters(filters)
         
-        await interaction.response.send_message(f"🎵 Pitch set to **{pitch}x**")
+        await interaction.response.send_message(f"🎵 Set pitch to **{pitch}x**")
 
 
 async def setup(bot: commands.Bot):
