@@ -73,18 +73,29 @@ module.exports = {
       const selected = results[parseInt(i.values[0])];
       
       try {
+        // Defer the update first to avoid token expiration
+        await i.deferUpdate();
+        
         await client.distube.play(voiceChannel, selected.url, {
           textChannel: interaction.channel,
           member: interaction.member
         });
-        await i.update({ content: '▶️ Playing: **' + selected.title + '**', components: [] });
+        
+        // Edit the deferred interaction
+        await i.editReply({ content: '▶️ Playing: **' + selected.title + '**', components: [] });
       } catch (err) {
-        await i.update({ content: '❌ Failed to play: ' + err.message, components: [] });
+        // If the interaction has already been responded to, use followUp instead
+        try {
+          await i.editReply({ content: '❌ Failed to play: ' + err.message, components: [] });
+        } catch {
+          await i.followUp({ content: '❌ Failed to play: ' + err.message, ephemeral: true }).catch(() => {});
+        }
       }
     });
 
-    collector.on('end', async collected => {
-      if (collected.size === 0) {
+    collector.on('end', async (collected, reason) => {
+      // Only show timeout message if no selection was made and it timed out
+      if (collected.size === 0 && reason === 'time') {
         await interaction.editReply({ content: '⏱️ No selection made, please try again.', components: [] }).catch(() => {});
       }
     });

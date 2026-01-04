@@ -79,6 +79,33 @@ function clearGuildTimeout(guildId) {
 }
 
 /**
+ * Force leave voice channel for a guild
+ */
+function leaveVoiceChannel(guildId) {
+  try {
+    // Try to stop the queue first (cleans up DisTube state)
+    const queue = client.distube?.getQueue(guildId);
+    if (queue) {
+      queue.stop();
+      return;
+    }
+    
+    // If no queue, use @discordjs/voice to disconnect
+    const { getVoiceConnection } = require('@discordjs/voice');
+    const connection = getVoiceConnection(guildId);
+    if (connection) {
+      connection.destroy();
+    }
+  } catch (err) {
+    // Fallback: try to leave via guild
+    const guild = client.guilds.cache.get(guildId);
+    if (guild?.members?.me?.voice?.channel) {
+      guild.members.me.voice.disconnect().catch(() => {});
+    }
+  }
+}
+
+/**
  * Start idle timeout (no music playing)
  */
 function startIdleTimeout(queue) {
@@ -91,7 +118,7 @@ function startIdleTimeout(queue) {
   
   const timeout = setTimeout(() => {
     queue.textChannel?.send('⏹️ Left voice channel due to inactivity.');
-    queue.stop();
+    leaveVoiceChannel(guildId);
     timeouts.delete(guildId);
   }, config.idleTimeUntilStop * 1000);
   
@@ -111,7 +138,7 @@ function startAloneTimeout(queue) {
   
   const timeout = setTimeout(() => {
     queue.textChannel?.send('⏹️ Left voice channel - no one else is here.');
-    queue.stop();
+    leaveVoiceChannel(guildId);
     timeouts.delete(guildId);
   }, config.aloneTimeUntilStop * 1000);
   

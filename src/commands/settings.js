@@ -207,8 +207,23 @@ const commands = {
       const query = interaction.options.getString('query');
 
       try {
+        // Check if query is a URL
+        const isUrl = /^https?:\/\//.test(query);
+        let playUrl = query;
+        
+        // For search terms, use yt-dlp to search YouTube
+        if (!isUrl) {
+          const ytdlpPlugin = client.distube.ytdlpPlugin;
+          if (ytdlpPlugin) {
+            const results = await ytdlpPlugin.search(query, 1);
+            if (results && results.length > 0) {
+              playUrl = results[0].url;
+            }
+          }
+        }
+        
         // Use DisTube's play with skip option
-        await client.distube.play(voiceChannel, query, {
+        await client.distube.play(voiceChannel, playUrl, {
           textChannel: interaction.channel,
           member: interaction.member,
           skip: true // This tells DisTube to play immediately
@@ -242,8 +257,23 @@ const commands = {
       const query = interaction.options.getString('query');
 
       try {
+        // Check if query is a URL
+        const isUrl = /^https?:\/\//.test(query);
+        let playUrl = query;
+        
+        // For search terms, use yt-dlp to search YouTube
+        if (!isUrl) {
+          const ytdlpPlugin = client.distube.ytdlpPlugin;
+          if (ytdlpPlugin) {
+            const results = await ytdlpPlugin.search(query, 1);
+            if (results && results.length > 0) {
+              playUrl = results[0].url;
+            }
+          }
+        }
+        
         // Use DisTube's play with position 1 (next after current)
-        await client.distube.play(voiceChannel, query, {
+        await client.distube.play(voiceChannel, playUrl, {
           textChannel: interaction.channel,
           member: interaction.member,
           position: 1

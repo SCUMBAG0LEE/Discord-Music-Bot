@@ -111,6 +111,11 @@ function setupEvents(distube, client) {
     .on(Events.PLAY_SONG, async (queue, song) => {
       logger.player(queue.id, 'playSong', { title: song.name, duration: song.duration });
       
+      // Clear any pending idle/alone timeout when music starts
+      if (client.clearGuildTimeout) {
+        client.clearGuildTimeout(queue.id);
+      }
+      
       // Clear vote skip votes when a new song starts
       if (queue.votes) queue.votes.clear();
       if (queue.skipVotes) queue.skipVotes.clear();

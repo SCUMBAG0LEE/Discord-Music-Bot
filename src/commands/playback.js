@@ -150,8 +150,14 @@ const commands = {
         return interaction.reply({ content: 'You do not have permission to skip directly. Use /voteskip instead.', ephemeral: true });
       }
 
-      await queue.skip();
-      return interaction.reply('⏭️ Song skipped.');
+      try {
+        await queue.skip();
+        return interaction.reply('⏭️ Song skipped.');
+      } catch (error) {
+        // If skip fails (no more songs), stop instead
+        await queue.stop();
+        return interaction.reply('⏹️ Skipped - queue is now empty.');
+      }
     }
   },
 
