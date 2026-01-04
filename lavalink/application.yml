@@ -1,21 +1,22 @@
 server:
   port: 2333
   address: 0.0.0.0
+  http2:
+    enabled: true
 
 lavalink:
   plugins:
-    # YouTube support - actively maintained, bypasses blocks
-    - dependency: "dev.lavalink.youtube:youtube-plugin:+"
+    # YouTube plugin - handles all YouTube playback (https://maven.lavalink.dev/releases/dev/lavalink/youtube/youtube-plugin)
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.16.0"
       snapshot: false
-    # LavaSrc - Spotify, Apple Music, Deezer, Yandex, Flowery TTS
-    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:+"
+    # LavaSrc - Spotify, Apple Music, Deezer, Yandex support (https://maven.lavalink.dev/releases/com/github/topi314/lavasrc/lavasrc-plugin)
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1"
       snapshot: false
-    # SponsorBlock - skip sponsor segments in YouTube videos
-    - dependency: "com.github.topi314.sponsorblock:sponsorblock-plugin:+"
+    # SponsorBlock - auto-skip sponsors in YouTube videos (https://maven.lavalink.dev/releases/com/github/topi314/sponsorblock/sponsorblock-plugin)
+    - dependency: "com.github.topi314.sponsorblock:sponsorblock-plugin:3.0.1"
       snapshot: false
-  
   server:
-    password: ${LAVALINK_PASSWORD:youshallnotpass}
+    password: "youshallnotpass"
     sources:
       youtube: false  # Disabled - using youtube-plugin instead
       bandcamp: true
@@ -24,7 +25,6 @@ lavalink:
       vimeo: true
       http: true
       local: false
-    
     filters:
       volume: true
       equalizer: true
@@ -36,21 +36,19 @@ lavalink:
       rotation: true
       channelMix: true
       lowPass: true
-    
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
     opusEncodingQuality: 10
     resamplingQuality: HIGH
     trackStuckThresholdMs: 10000
     useSeekGhosting: true
-    youtubePlaylistLoadLimit: 100
-    playerUpdateInterval: 1
+    youtubePlaylistLoadLimit: 6
+    playerUpdateInterval: 5
     youtubeSearchEnabled: true
     soundcloudSearchEnabled: true
     gc-warnings: true
 
 plugins:
-  # YouTube plugin configuration
   youtube:
     enabled: true
     allowSearch: true
@@ -61,18 +59,17 @@ plugins:
       - ANDROID_MUSIC
       - TVHTML5EMBEDDED
       - WEB
-    # OAuth for better reliability (optional but recommended)
-    # Enables access to age-restricted content and improves reliability
-    # oauth:
-    #   enabled: true
-    #   refreshToken: "your_refresh_token"
+    oauth:
+      enabled: false
+    # Uncomment and configure if you have issues:
+    # pot:
+    #   token: "your-po-token"
+    #   visitorData: "your-visitor-data"
   
-  # LavaSrc configuration
   lavasrc:
     providers:
       - "ytsearch:\"%ISRC%\""
       - "ytsearch:%QUERY%"
-      - "scsearch:%QUERY%"
     sources:
       spotify: true
       applemusic: false
@@ -81,27 +78,33 @@ plugins:
       flowerytts: false
       youtube: true
     spotify:
-      clientId: ${SPOTIFY_CLIENT_ID:}
-      clientSecret: ${SPOTIFY_CLIENT_SECRET:}
-      countryCode: ${SPOTIFY_COUNTRY:US}
-      playlistLoadLimit: 100
-      albumLoadLimit: 100
-    # Apple Music (optional)
-    # applemusic:
-    #   countryCode: "US"
-    #   mediaAPIToken: "your_token"
+      # Get credentials from https://developer.spotify.com/dashboard
+      clientId: "your-spotify-client-id"
+      clientSecret: "your-spotify-client-secret"
+      spDc: ""
+      countryCode: "US"
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
   
-  # SponsorBlock configuration
   sponsorblock:
-    enabled: true
+    servers:
+      - "https://sponsor.ajay.app"
+      - "https://sponsorblock.kavin.rocks"
     categories:
       - sponsor
       - selfpromo
       - interaction
       - intro
       - outro
-      - preview
-      - music_offtopic
+
+metrics:
+  prometheus:
+    enabled: false
+    endpoint: /metrics
+
+sentry:
+  dsn: ""
+  environment: ""
 
 logging:
   file:
@@ -109,8 +112,15 @@ logging:
   level:
     root: INFO
     lavalink: INFO
+  request:
+    enabled: true
+    includeClientInfo: true
+    includeHeaders: false
+    includeQueryString: true
+    includePayload: true
+    maxPayloadLength: 10000
 
-metrics:
-  prometheus:
-    enabled: false
-    endpoint: /metrics
+  logback:
+    rollingpolicy:
+      max-file-size: 1GB
+      max-history: 30
