@@ -2,6 +2,8 @@
  * Permission checking utilities for DJ/Owner commands
  */
 
+const { getEffectiveDJRole } = require('../services/serverSettings');
+
 /**
  * Check if user is the bot owner
  */
@@ -10,12 +12,18 @@ function isOwner(userId, client) {
 }
 
 /**
- * Check if user has DJ role
+ * Check if user has DJ role (checks server-specific first, then global)
  */
 function isDJ(member, client) {
-  if (!client.config.djRoleId) return true; // No DJ role set = everyone is DJ
   if (isOwner(member.user.id, client)) return true;
-  return member.roles.cache.has(client.config.djRoleId);
+  if (member.permissions.has('Administrator')) return true;
+  if (member.permissions.has('ManageGuild')) return true;
+  
+  // Get effective DJ role (server-specific or global)
+  const djRoleId = getEffectiveDJRole(member.guild.id, client.config.djRoleId);
+  
+  if (!djRoleId) return true; // No DJ role set = everyone is DJ
+  return member.roles.cache.has(djRoleId);
 }
 
 /**

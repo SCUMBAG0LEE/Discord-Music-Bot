@@ -215,6 +215,41 @@ kazagumo.shoukaku.on('close', (name, code, reason) => {
   logger.warn('Lavalink', `Node "${name}" closed (${code}): ${reason || 'No reason'}`);
 });
 
+// Automatic reconnection when node disconnects (after built-in retries exhausted)
+kazagumo.shoukaku.on('disconnect', (name, count) => {
+  logger.warn('Lavalink', `Node "${name}" disconnected. Reconnect attempts: ${count}`);
+  
+  // If built-in reconnects failed, start manual infinite retry
+  if (count >= 3) {
+    logger.info('Lavalink', `Starting infinite reconnect loop for node "${name}"...`);
+    
+    const retryConnect = setInterval(async () => {
+      try {
+        const node = kazagumo.shoukaku.nodes.get(name);
+        if (node && node.state === 'CONNECTED') {
+          logger.success('Lavalink', `Node "${name}" reconnected!`);
+          clearInterval(retryConnect);
+          return;
+        }
+        
+        logger.info('Lavalink', `Attempting to reconnect node "${name}"...`);
+        // Force reconnect by removing and re-adding the node
+        kazagumo.shoukaku.nodes.delete(name);
+        await kazagumo.shoukaku.addNode({
+          name: 'Main',
+          url: process.env.LAVALINK_HOST || 'localhost:2333',
+          auth: process.env.LAVALINK_PASSWORD || 'youshallnotpass',
+          secure: process.env.LAVALINK_SECURE === 'true'
+        });
+        logger.success('Lavalink', `Node "${name}" reconnected!`);
+        clearInterval(retryConnect);
+      } catch (error) {
+        logger.warn('Lavalink', `Reconnect failed, retrying in 5s... (${error.message})`);
+      }
+    }, 5000);
+  }
+});
+
 // Player create event - load autoplaylist if configured
 kazagumo.on('playerCreate', async (player) => {
   const settings = loadSettings(player.guildId);
