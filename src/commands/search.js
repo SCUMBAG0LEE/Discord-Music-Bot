@@ -88,6 +88,7 @@ module.exports = {
 
         // Start playing if not already
         if (!player.playing && !player.paused) {
+          player.data.suppressNowPlaying = true;
           player.play();
         }
 

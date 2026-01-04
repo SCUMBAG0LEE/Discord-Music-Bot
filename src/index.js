@@ -294,9 +294,16 @@ kazagumo.on('playerCreate', async (player) => {
 kazagumo.on('playerStart', (player, track) => {
   clearGuildTimeout(player.guildId);  // Clear any disconnect timeout
   
-  const channel = client.channels.cache.get(player.textId);
-  if (channel) {
-    channel.send(`🎵 Now playing: **${track.title}** - \`${formatDuration(track.length)}\``);
+  // Check if this track was just started by a command (to avoid duplicate message)
+  // Commands set player.data.suppressNowPlaying = true before calling play()
+  if (player.data.suppressNowPlaying) {
+    player.data.suppressNowPlaying = false;
+  } else {
+    // Send "Now playing" for automatic queue progression
+    const channel = client.channels.cache.get(player.textId);
+    if (channel) {
+      channel.send(`🎵 Now playing: **${track.title}** - \`${formatDuration(track.length)}\``);
+    }
   }
   
   // Reset vote skip for new track
@@ -371,7 +378,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 });
 
 // Discord events
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`\n🤖 Logged in as ${client.user.tag}`);
   
   // Set activity and status from config

@@ -150,6 +150,8 @@ module.exports = {
 
       // Start playing if not already
       if (!player.playing && !player.paused) {
+        // Suppress "Now playing" in playerStart event since we already sent the reply
+        player.data.suppressNowPlaying = true;
         player.play();
       }
 

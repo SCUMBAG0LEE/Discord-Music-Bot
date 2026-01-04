@@ -109,6 +109,7 @@ const commands = {
         }
 
         if (!player.playing && !player.paused) {
+          player.data.suppressNowPlaying = true;
           player.play();
         }
 

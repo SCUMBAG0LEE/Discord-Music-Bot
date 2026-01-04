@@ -218,6 +218,7 @@ const commands = {
           player.skip();
           return interaction.editReply(`⏭️ Force playing **${track.title}**`);
         } else {
+          player.data.suppressNowPlaying = true;
           player.play();
           return interaction.editReply(`🎵 Playing **${track.title}**`);
         }
@@ -274,6 +275,7 @@ const commands = {
         player.queue.splice(0, 0, track);
 
         if (!player.playing && !player.paused) {
+          player.data.suppressNowPlaying = true;
           player.play();
           return interaction.editReply(`🎵 Playing **${track.title}**`);
         }
