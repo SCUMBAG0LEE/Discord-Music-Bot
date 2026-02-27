@@ -10,7 +10,7 @@
  * - Cookie support for age-restricted content
  */
 
-const { PlayableExtractorPlugin, Song, Playlist } = require('distube');
+const { ExtractorPlugin, Song, Playlist } = require('distube');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -147,6 +147,15 @@ async function runYtdlp(args, timeout = 30000) {
 }
 
 /**
+ * Check if a string is any kind of URL
+ * @param {string} str
+ * @returns {boolean}
+ */
+function isURL(str) {
+  return /^https?:\/\//i.test(str);
+}
+
+/**
  * Check if URL is a YouTube URL
  * @param {string} url
  * @returns {boolean}
@@ -193,7 +202,7 @@ function formatDuration(seconds) {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
-class YtDlpPlugin extends PlayableExtractorPlugin {
+class YtDlpPlugin extends ExtractorPlugin {
   constructor(options = {}) {
     super();
     this.options = options;
@@ -209,14 +218,51 @@ class YtDlpPlugin extends PlayableExtractorPlugin {
   }
 
   validate(url) {
-    return isYouTubeURL(url);
+    if (typeof url !== 'string') return false;
+    // Accept YouTube URLs
+    if (isYouTubeURL(url)) return true;
+    // Accept non-URL strings as search queries (e.g. from Spotify plugin)
+    // but reject URLs for other platforms (SoundCloud, Spotify, etc.)
+    if (!isURL(url)) return true;
+    return false;
   }
 
   async resolve(url, options) {
-    if (isPlaylistURL(url)) {
-      return this.resolvePlaylist(url, options);
+    if (isYouTubeURL(url)) {
+      if (isPlaylistURL(url)) {
+        return this.resolvePlaylist(url, options);
+      }
+      return this.resolveVideo(url, options);
     }
-    return this.resolveVideo(url, options);
+    // Non-URL string = search query (from Spotify plugin etc.)
+    return this.resolveSearch(url, options);
+  }
+
+  async resolveSearch(query, options) {
+    console.log(`[yt-dlp] Searching YouTube for: ${query}`);
+    
+    const info = await runYtdlp([
+      '-J',
+      '--flat-playlist',
+      '--playlist-end', '1',
+      `ytsearch1:${query}`
+    ], 15000);
+    
+    if (!info?.entries || info.entries.length === 0) {
+      throw new Error(`No YouTube results found for: ${query}`);
+    }
+    
+    const entry = info.entries[0];
+    return this.createSong({
+      id: entry.id,
+      title: entry.title || query,
+      duration: entry.duration || 0,
+      thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg`,
+      channel: entry.channel || entry.uploader || 'Unknown',
+      channel_url: entry.channel_url || entry.uploader_url || null,
+      view_count: entry.view_count || 0,
+      webpage_url: entry.webpage_url || entry.url || `https://www.youtube.com/watch?v=${entry.id}`
+    }, options, false);
   }
 
   async resolveVideo(url, options) {
@@ -335,6 +381,44 @@ class YtDlpPlugin extends PlayableExtractorPlugin {
     }
     
     throw lastError;
+  }
+
+  /**
+   * Search for a song on YouTube (used by DisTube to resolve Spotify/info-only tracks)
+   * @param {string} query - Search query (e.g. "song name artist")
+   * @param {object} options - Resolve options from DisTube
+   * @returns {Promise<Song|null>}
+   */
+  async searchSong(query, options) {
+    console.log(`[yt-dlp] searchSong: ${query}`);
+    
+    try {
+      const info = await runYtdlp([
+        '-J',
+        '--flat-playlist',
+        '--playlist-end', '1',
+        `ytsearch1:${query}`
+      ], 15000);
+      
+      if (!info?.entries || info.entries.length === 0) {
+        return null;
+      }
+      
+      const entry = info.entries[0];
+      return this.createSong({
+        id: entry.id,
+        title: entry.title || query,
+        duration: entry.duration || 0,
+        thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg`,
+        channel: entry.channel || entry.uploader || 'Unknown',
+        channel_url: entry.channel_url || entry.uploader_url || null,
+        view_count: entry.view_count || 0,
+        webpage_url: entry.webpage_url || entry.url || `https://www.youtube.com/watch?v=${entry.id}`
+      }, options, false);
+    } catch (error) {
+      console.error(`[yt-dlp] searchSong failed: ${error.message}`);
+      return null;
+    }
   }
 
   async getRelatedSongs(song) {

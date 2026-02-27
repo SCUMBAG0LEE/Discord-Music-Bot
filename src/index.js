@@ -79,18 +79,15 @@ function clearGuildTimeout(guildId) {
 }
 
 /**
- * Force leave voice channel for a guild
+ * Force leave voice channel for a guild.
+ * Destroys the voice connection directly — DisTube cleans up its queue
+ * automatically when it detects the disconnect.
  */
 function leaveVoiceChannel(guildId) {
+  clearGuildTimeout(guildId);
+
+  // Disconnect via @discordjs/voice (DisTube uses this under the hood)
   try {
-    // Try to stop the queue first (cleans up DisTube state)
-    const queue = client.distube?.getQueue(guildId);
-    if (queue) {
-      queue.stop();
-      return;
-    }
-    
-    // If no queue, use @discordjs/voice to disconnect
     const { getVoiceConnection } = require('@discordjs/voice');
     const connection = getVoiceConnection(guildId);
     if (connection) {
@@ -98,12 +95,10 @@ function leaveVoiceChannel(guildId) {
       return;
     }
   } catch (err) {
-    // Ignore errors, fall through to guild-based disconnect
+    // fall through to guild-based fallback
   }
 
-  // Final fallback: disconnect via guild member voice state
-  // This handles cases where DisTube's queue is gone and @discordjs/voice
-  // can't find the connection (e.g., after queue finish)
+  // Fallback: disconnect via guild member voice state
   try {
     const guild = client.guilds.cache.get(guildId);
     if (guild?.members?.me?.voice?.channel) {

@@ -96,10 +96,36 @@ const commands = {
 
       const queue = client.distube.getQueue(interaction.guildId);
       if (!queue) {
+        // No queue but bot might still be in voice — disconnect it
+        if (interaction.guild?.members?.me?.voice?.channel) {
+          client.clearGuildTimeout?.(interaction.guildId);
+          try {
+            const { getVoiceConnection } = require('@discordjs/voice');
+            const conn = getVoiceConnection(interaction.guildId);
+            if (conn) conn.destroy();
+            else interaction.guild.members.me.voice.disconnect();
+          } catch {}
+          return interaction.reply('⏹️ Disconnected from voice channel.');
+        }
         return interaction.reply({ content: 'There is no active queue.' });
       }
 
+      // Clear timeouts before stopping (stop triggers FINISH which may start new ones)
+      client.clearGuildTimeout?.(interaction.guildId);
       await queue.stop();
+      client.clearGuildTimeout?.(interaction.guildId);
+
+      // Force disconnect — queue.stop() clears the queue but does not leave voice
+      try {
+        const { getVoiceConnection } = require('@discordjs/voice');
+        const connection = getVoiceConnection(interaction.guildId);
+        if (connection) {
+          connection.destroy();
+        } else if (interaction.guild?.members?.me?.voice?.channel) {
+          interaction.guild.members.me.voice.disconnect();
+        }
+      } catch {}
+
       return interaction.reply('⏹️ Playback stopped and queue cleared.');
     }
   },
@@ -162,8 +188,18 @@ const commands = {
         await queue.skip();
         return interaction.reply('⏭️ Song skipped.');
       } catch (error) {
-        // If skip fails (no more songs), stop instead
+        // If skip fails (no more songs), stop and disconnect
+        client.clearGuildTimeout?.(interaction.guildId);
         await queue.stop();
+        client.clearGuildTimeout?.(interaction.guildId);
+        try {
+          const { getVoiceConnection } = require('@discordjs/voice');
+          const conn = getVoiceConnection(interaction.guildId);
+          if (conn) conn.destroy();
+          else if (interaction.guild?.members?.me?.voice?.channel) {
+            interaction.guild.members.me.voice.disconnect();
+          }
+        } catch {}
         return interaction.reply('⏹️ Skipped - queue is now empty.');
       }
     }
