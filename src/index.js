@@ -37,7 +37,7 @@ const config = {
   idleTimeUntilStop: parseInt(process.env.IDLE_TIMEOUT) || 300,    // seconds before leaving when paused/idle
   stayInChannel: process.env.STAY_IN_CHANNEL === 'true',           // 24/7 mode
   songInStatus: process.env.SONG_IN_STATUS === 'true',             // show current song in bot status
-  activityType: parseActivityType(process.env.ACTIVITY_TYPE),
+  activityType: parseActivityType(process.env.ACTIVITY_TYPE) || 'PLAYING',
   activityName: process.env.ACTIVITY_NAME || 'music | /help',
   status: process.env.BOT_STATUS || 'online'
 };
@@ -232,17 +232,31 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 });
 
 // Bot ready event
+// Bot ready event
 client.once('clientReady', async () => {
   console.log(`\n🤖 Logged in as ${client.user.tag}`);
-  
+
+  // NEW: Activity Configuration Logic
+  const activityConfig = {
+    name: config.activityName,
+    type: config.activityType
+  };
+
+  // If the type is STREAMING, we move the activityName to the 'url' field
+  // and set a generic name (or you can customize the name here).
+  if (config.activityType === ActivityType.Streaming) {
+    activityConfig.url = config.activityName; // Use the URL from .env
+    activityConfig.name = "/help";      // This is the "Streaming [Name]" text
+  }
+
   // Set activity and status from config
   client.user.setPresence({
-    activities: [{ name: config.activityName, type: config.activityType }],
+    activities: [activityConfig],
     status: config.status
   });
 
   await registerCommands();
-  
+
   console.log('✓ Bot is ready!\n');
 });
 
