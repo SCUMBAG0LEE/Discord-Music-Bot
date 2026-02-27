@@ -65,17 +65,73 @@ async function findYtdlp() {
 }
 
 /**
- * Get cookie file path if exists (checks multiple filenames)
+ * Convert JSON cookie array (e.g. from EditThisCookie) to Netscape format
+ * @param {string} jsonPath - Path to the JSON cookie file
+ * @returns {string} Path to the converted Netscape-format file
+ */
+function convertJsonCookies(jsonPath) {
+  const netscapePath = jsonPath + '.netscape';
+  // Only reconvert if JSON is newer than the converted file
+  if (fs.existsSync(netscapePath)) {
+    const jsonStat = fs.statSync(jsonPath);
+    const netscapeStat = fs.statSync(netscapePath);
+    if (netscapeStat.mtimeMs >= jsonStat.mtimeMs) {
+      return netscapePath;
+    }
+  }
+  try {
+    const raw = fs.readFileSync(jsonPath, 'utf-8');
+    const cookies = JSON.parse(raw);
+    if (!Array.isArray(cookies)) return null;
+    const lines = ['# Netscape HTTP Cookie File', '# Converted from JSON by Discord Music Bot', ''];
+    for (const c of cookies) {
+      if (!c.domain || !c.name) continue;
+      const domain = c.domain;
+      const hostOnly = c.hostOnly ? 'FALSE' : 'TRUE';
+      const cookiePath = c.path || '/';
+      const secure = c.secure ? 'TRUE' : 'FALSE';
+      const expiry = Math.floor(c.expirationDate || 0);
+      const name = c.name;
+      const value = c.value || '';
+      lines.push(`${domain}\t${hostOnly}\t${cookiePath}\t${secure}\t${expiry}\t${name}\t${value}`);
+    }
+    fs.writeFileSync(netscapePath, lines.join('\n') + '\n', 'utf-8');
+    console.log(`[yt-dlp] Converted JSON cookies → Netscape format: ${netscapePath}`);
+    return netscapePath;
+  } catch (err) {
+    console.error(`[yt-dlp] Failed to convert JSON cookies: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Get cookie file path if exists (checks multiple filenames).
+ * Supports both Netscape format (.txt) and JSON format (auto-converted).
  * @returns {string|null}
  */
 function getCookiePath() {
   const candidates = [
     'youtube-cookies.txt',
     'cookies.txt',
+    'youtube-cookies.json',
+    'cookies.json',
   ];
   for (const name of candidates) {
     const filePath = path.join(process.cwd(), name);
     if (fs.existsSync(filePath)) {
+      // Check if it's JSON by reading the first non-whitespace character
+      try {
+        const head = fs.readFileSync(filePath, 'utf-8').trimStart();
+        if (head.startsWith('[') || head.startsWith('{')) {
+          // JSON cookies — convert to Netscape format for yt-dlp
+          const converted = convertJsonCookies(filePath);
+          if (converted) return converted;
+          continue; // conversion failed, try next candidate
+        }
+      } catch {
+        continue;
+      }
+      // Already Netscape format
       return filePath;
     }
   }
