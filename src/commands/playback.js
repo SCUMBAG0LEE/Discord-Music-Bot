@@ -49,6 +49,10 @@ const commands = {
         return interaction.reply({ content: 'There is no active queue.' });
       }
 
+      if (queue.paused) {
+        return interaction.reply({ content: 'Playback is already paused. Use `/resume` to continue.', ephemeral: true });
+      }
+
       queue.pause();
       return interaction.reply('⏸️ Playback paused.');
     }
@@ -68,6 +72,10 @@ const commands = {
       const queue = client.distube.getQueue(interaction.guildId);
       if (!queue) {
         return interaction.reply({ content: 'There is no active queue.' });
+      }
+
+      if (!queue.paused) {
+        return interaction.reply({ content: 'Playback is not paused.', ephemeral: true });
       }
 
       queue.resume();

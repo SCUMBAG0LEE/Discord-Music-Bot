@@ -108,6 +108,10 @@ const commands = {
       .setDescription('Force skip the current song (DJ only)'),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!isDJ(interaction.member, client)) {
         return djOnlyError(interaction);
       }
@@ -197,6 +201,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!isDJ(interaction.member, client)) {
         return djOnlyError(interaction);
       }
@@ -251,6 +259,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const voiceChannel = interaction.member.voice.channel;
       if (!voiceChannel) {
         return interaction.reply({ content: 'You must be in a voice channel.', ephemeral: true });

@@ -37,7 +37,7 @@ const config = {
   idleTimeUntilStop: parseInt(process.env.IDLE_TIMEOUT) || 300,    // seconds before leaving when paused/idle
   stayInChannel: process.env.STAY_IN_CHANNEL === 'true',           // 24/7 mode
   songInStatus: process.env.SONG_IN_STATUS === 'true',             // show current song in bot status
-  activityType: parseActivityType(process.env.ACTIVITY_TYPE) || 'PLAYING',
+  activityType: parseActivityType(process.env.ACTIVITY_TYPE),
   activityName: process.env.ACTIVITY_NAME || 'music | /help',
   status: process.env.BOT_STATUS || 'online'
 };
@@ -257,7 +257,6 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   }
 });
 
-// Bot ready event
 // Bot ready event
 client.once('clientReady', async () => {
   console.log(`\n🤖 Logged in as ${client.user.tag}`);

@@ -54,7 +54,6 @@ const commands = {
 
       if (sub === 'user') {
         const target = interaction.options.getUser('target');
-        const before = queue.songs.length;
         
         // Find all tracks by this user (skip current song at index 0)
         const toRemove = [];
@@ -294,7 +293,7 @@ const commands = {
           },
           { 
             name: '⏭️ Skip Ratio', 
-            value: settings.skipRatio !== undefined 
+            value: settings.skipRatio != null 
               ? `${(settings.skipRatio * 100).toFixed(0)}%` 
               : `${((defaults.skipRatio || 0.5) * 100).toFixed(0)}% (default)`,
             inline: true 

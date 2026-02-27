@@ -161,15 +161,35 @@ function setupEvents(distube, client) {
     .on(Events.ADD_SONG, async (queue, song) => {
       logger.queue(queue.id, 'addSong', { title: song.name });
       
-      // Check max duration from server settings
+      // Check max queue size
+      const maxQueueSize = client.config?.maxQueueSize || 0;
+      if (maxQueueSize > 0 && queue.songs.length > maxQueueSize) {
+        const index = queue.songs.indexOf(song);
+        if (index > 0) {
+          queue.songs.splice(index, 1);
+        }
+        const replyMessage = song.metadata?.replyMessage;
+        if (replyMessage) {
+          try {
+            await replyMessage.edit(`❌ Queue is full (max ${maxQueueSize} songs)`);
+            delete song.metadata.replyMessage;
+            return;
+          } catch (e) { /* ignore */ }
+        }
+        queue.textChannel?.send(`❌ Queue is full (max ${maxQueueSize} songs)`);
+        return;
+      }
+      
+      // Check max duration from server settings (with global fallback)
       const settings = loadSettings(queue.id);
-      if (settings.maxDuration && song.duration > settings.maxDuration) {
+      const maxDuration = settings.maxDuration || client.config?.maxDuration || 0;
+      if (maxDuration > 0 && song.duration > maxDuration) {
         // Remove the song from queue
         const index = queue.songs.indexOf(song);
         if (index > 0) {
           queue.songs.splice(index, 1);
         }
-        const maxMins = Math.floor(settings.maxDuration / 60);
+        const maxMins = Math.floor(maxDuration / 60);
         
         // Try to edit the Processing message, otherwise send new message
         const replyMessage = song.metadata?.replyMessage;

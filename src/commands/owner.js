@@ -44,6 +44,64 @@ const commands = {
     }
   },
 
+  setbanner: {
+    data: new SlashCommandBuilder()
+      .setName('setbanner')
+      .setDescription('Change the bot\'s banner (Owner only)')
+      .addAttachmentOption(opt =>
+        opt.setName('image')
+          .setDescription('New banner image')
+          .setRequired(false)
+      )
+      .addStringOption(opt =>
+        opt.setName('url')
+          .setDescription('Image URL')
+          .setRequired(false)
+      )
+      .addBooleanOption(opt =>
+        opt.setName('remove')
+          .setDescription('Remove the current banner')
+          .setRequired(false)
+      ),
+
+    async execute(interaction, client) {
+      if (!isOwner(interaction.user.id, client)) {
+        return ownerOnlyError(interaction);
+      }
+
+      const attachment = interaction.options.getAttachment('image');
+      const url = interaction.options.getString('url');
+      const remove = interaction.options.getBoolean('remove');
+
+      if (remove) {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          await client.user.setBanner(null);
+          return interaction.editReply('✅ Banner removed!');
+        } catch (error) {
+          logger.error('SetBanner', 'Failed to remove banner', error);
+          return interaction.editReply(`❌ Failed to remove banner: ${error.message}`);
+        }
+      }
+
+      const imageUrl = attachment?.url || url;
+
+      if (!imageUrl) {
+        return interaction.reply({ content: 'Please provide an image attachment, URL, or use `remove: true`.', ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      try {
+        await client.user.setBanner(imageUrl);
+        return interaction.editReply('✅ Banner updated successfully!');
+      } catch (error) {
+        logger.error('SetBanner', 'Failed to update banner', error);
+        return interaction.editReply(`❌ Failed to update banner: ${error.message}`);
+      }
+    }
+  },
+
   setname: {
     data: new SlashCommandBuilder()
       .setName('setname')
