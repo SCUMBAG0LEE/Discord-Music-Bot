@@ -95,29 +95,43 @@ function leaveVoiceChannel(guildId) {
     const connection = getVoiceConnection(guildId);
     if (connection) {
       connection.destroy();
+      return;
     }
   } catch (err) {
-    // Fallback: try to leave via guild
+    // Ignore errors, fall through to guild-based disconnect
+  }
+
+  // Final fallback: disconnect via guild member voice state
+  // This handles cases where DisTube's queue is gone and @discordjs/voice
+  // can't find the connection (e.g., after queue finish)
+  try {
     const guild = client.guilds.cache.get(guildId);
     if (guild?.members?.me?.voice?.channel) {
-      guild.members.me.voice.disconnect().catch(() => {});
+      guild.members.me.voice.disconnect();
     }
+  } catch (err) {
+    // Nothing more we can do
   }
 }
 
 /**
  * Start idle timeout (no music playing)
+ * @param {string} guildId - Guild ID
+ * @param {object} [options] - Optional text channel and stay settings from queue
+ * @param {object} [options.textChannel] - Text channel to send leave message
+ * @param {boolean} [options.stayInChannel] - Queue-level 24/7 override
  */
-function startIdleTimeout(queue) {
-  const guildId = queue.id;
+function startIdleTimeout(guildId, options = {}) {
   const settings = loadSettings(guildId);
   
-  if (config.stayInChannel || settings.stayInChannel || queue.stayInChannel) return;
+  if (config.stayInChannel || settings.stayInChannel || options.stayInChannel) return;
   
   clearGuildTimeout(guildId);
   
+  const textChannel = options.textChannel || null;
+  
   const timeout = setTimeout(() => {
-    queue.textChannel?.send('⏹️ Left voice channel due to inactivity.');
+    textChannel?.send('⏹️ Left voice channel due to inactivity.');
     leaveVoiceChannel(guildId);
     timeouts.delete(guildId);
   }, config.idleTimeUntilStop * 1000);
@@ -127,17 +141,22 @@ function startIdleTimeout(queue) {
 
 /**
  * Start alone timeout (empty VC)
+ * @param {string} guildId - Guild ID
+ * @param {object} [options] - Optional text channel and stay settings from queue
+ * @param {object} [options.textChannel] - Text channel to send leave message
+ * @param {boolean} [options.stayInChannel] - Queue-level 24/7 override
  */
-function startAloneTimeout(queue) {
-  const guildId = queue.id;
+function startAloneTimeout(guildId, options = {}) {
   const settings = loadSettings(guildId);
   
-  if (config.stayInChannel || settings.stayInChannel || queue.stayInChannel) return;
+  if (config.stayInChannel || settings.stayInChannel || options.stayInChannel) return;
   
   clearGuildTimeout(guildId);
   
+  const textChannel = options.textChannel || null;
+  
   const timeout = setTimeout(() => {
-    queue.textChannel?.send('⏹️ Left voice channel - no one else is here.');
+    textChannel?.send('⏹️ Left voice channel - no one else is here.');
     leaveVoiceChannel(guildId);
     timeouts.delete(guildId);
   }, config.aloneTimeUntilStop * 1000);
@@ -212,22 +231,29 @@ async function registerCommands() {
 
 // Voice state update - detect when bot is alone
 client.on('voiceStateUpdate', (oldState, newState) => {
-  const queue = client.distube?.getQueue(oldState.guild.id);
-  if (!queue) return;
+  const guildId = oldState.guild.id;
   
-  // Get bot's voice channel
-  const botVoiceChannel = queue.voiceChannel;
+  // Get bot's voice channel (from queue if active, or from guild member state)
+  const queue = client.distube?.getQueue(guildId);
+  const botVoiceChannel = queue?.voiceChannel 
+    || oldState.guild.members?.me?.voice?.channel;
   if (!botVoiceChannel) return;
+  
+  // Only care about changes in the bot's voice channel
+  if (oldState.channelId !== botVoiceChannel.id && newState.channelId !== botVoiceChannel.id) return;
   
   // Count members in channel (excluding bots)
   const members = botVoiceChannel.members.filter(m => !m.user.bot);
   
   if (members.size === 0) {
-    // Bot is alone
-    startAloneTimeout(queue);
+    // Bot is alone - start alone timeout
+    startAloneTimeout(guildId, {
+      textChannel: queue?.textChannel,
+      stayInChannel: queue?.stayInChannel
+    });
   } else {
     // Someone joined, cancel timeout
-    clearGuildTimeout(queue.id);
+    clearGuildTimeout(guildId);
   }
 });
 

@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { isGuildInteraction } = require('../utils/permissions');
 
 // DisTube FFmpeg filter presets
 // These are applied via ffmpeg audio filters
@@ -71,6 +72,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || !queue.songs[0]) {
         return interaction.reply({ content: 'Nothing is playing.', ephemeral: true });
@@ -105,6 +110,10 @@ const commands = {
       .setDescription('Clear all audio filters'),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || !queue.songs[0]) {
         return interaction.reply({ content: 'Nothing is playing.', ephemeral: true });
@@ -130,6 +139,10 @@ const commands = {
       .setDescription('Show active filters and available presets'),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const queue = client.distube.getQueue(interaction.guildId);
       
       const embed = new EmbedBuilder()

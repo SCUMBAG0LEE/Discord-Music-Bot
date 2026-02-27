@@ -213,7 +213,10 @@ function setupEvents(distube, client) {
       logger.voice(queue.id, 'Voice channel empty');
       // Start alone timeout if configured
       if (client.startAloneTimeout) {
-        client.startAloneTimeout(queue);
+        client.startAloneTimeout(queue.id, {
+          textChannel: queue.textChannel,
+          stayInChannel: queue.stayInChannel
+        });
       }
     })
     .on(Events.FINISH, async queue => {
@@ -277,7 +280,10 @@ function setupEvents(distube, client) {
       
       // Start idle timeout if configured
       if (client.startIdleTimeout) {
-        client.startIdleTimeout(queue);
+        client.startIdleTimeout(queue.id, {
+          textChannel: queue.textChannel,
+          stayInChannel: queue.stayInChannel
+        });
       }
     })
     .on(Events.DISCONNECT, queue => {

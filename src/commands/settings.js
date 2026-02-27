@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { isDJ, djOnlyError } = require('../utils/permissions');
+const { isDJ, djOnlyError, isGuildInteraction } = require('../utils/permissions');
 const { loadSettings, setSetting, getEffectiveSkipRatio } = require('../services/serverSettings');
 
 const commands = {
@@ -136,6 +136,10 @@ const commands = {
       .setDescription('Vote to skip the current song'),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const queue = client.distube.getQueue(interaction.guildId);
       if (!queue || !queue.songs[0]) {
         return interaction.reply({ content: 'Nothing is playing.', ephemeral: true });
@@ -308,6 +312,22 @@ const commands = {
       
       setSetting(interaction.guildId, 'stayInChannel', newValue);
 
+      // Apply to current queue if active
+      const queue = client.distube.getQueue(interaction.guildId);
+      if (queue) {
+        queue.stayInChannel = newValue;
+      }
+
+      // If disabling, and bot is idle in VC with no queue, start idle timeout
+      if (!newValue && !queue) {
+        const guild = interaction.guild;
+        if (guild?.members?.me?.voice?.channel) {
+          client.startIdleTimeout?.(interaction.guildId, {
+            textChannel: interaction.channel
+          });
+        }
+      }
+
       if (newValue) {
         return interaction.reply('📻 **24/7 Mode enabled** - Bot will stay in voice channel even when idle');
       } else {
@@ -326,6 +346,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const queue = client.distube.getQueue(interaction.guildId);
       if (!queue) {
         return interaction.reply({ content: 'Nothing is playing.', ephemeral: true });
@@ -333,12 +357,14 @@ const commands = {
 
       const enabledOption = interaction.options.getBoolean('enabled');
       
-      // Toggle if not specified
+      // Determine the desired state
       const newValue = enabledOption !== null ? enabledOption : !queue.autoplay;
       
-      queue.toggleAutoplay();
+      // Only toggle if current state differs from desired
+      if (queue.autoplay !== newValue) {
+        queue.toggleAutoplay();
+      }
       
-      // Sync with toggle result
       const isEnabled = queue.autoplay;
 
       if (isEnabled) {
@@ -365,6 +391,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const queue = client.distube.getQueue(interaction.guildId);
       if (!queue) {
         return interaction.reply({ content: 'Nothing is playing.', ephemeral: true });

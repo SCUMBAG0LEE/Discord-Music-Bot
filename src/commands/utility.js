@@ -131,7 +131,7 @@ const commands = {
 
     async execute(interaction, client) {
       // Bot stats
-      const uptime = formatDuration(Math.floor(process.uptime() * 1000));
+      const uptime = formatDuration(Math.floor(process.uptime()));
       const memUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
       const guilds = client.guilds.cache.size;
       const queues = client.distube.queues.size;
