@@ -120,8 +120,10 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `BOT_TOKEN` | ✅ | Discord bot token from [Developer Portal](https://discord.com/developers/applications) |
+| `CLIENT_ID` | ✅ | Application (client) ID from Developer Portal |
 | `BOT_OWNER_ID` | ✅ | Your Discord user ID (for owner-only commands) |
 | `DJ_ROLE_ID` | ❌ | Role ID that can force-skip songs |
+| `GUILD_ID` | ❌ | Register commands to a single guild (instant, for testing) |
 | `SPOTIFY_CLIENT_ID` | ⚠️ | From [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
 | `SPOTIFY_CLIENT_SECRET` | ⚠️ | From Spotify Developer Dashboard |
 
@@ -231,7 +233,21 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/ping` | Check bot latency |
 | `/stats` | Bot statistics |
 | `/lyrics` | Get song lyrics |
-| `/refreshcommands` | Refresh slash commands (owner only) |
+
+### 👑 Owner (Bot Owner Only)
+| Command | Description |
+|---------|-------------|
+| `/setavatar <image>` | Change bot avatar |
+| `/setbanner <image>` | Change bot banner |
+| `/setname <name>` | Change bot username |
+| `/setstatus <status>` | Set bot status (online/idle/dnd/invisible) |
+| `/setgame <activity>` | Set bot activity |
+| `/shutdown` | Shut down the bot |
+| `/debug` | Show bot debug info |
+| `/eval <code>` | Evaluate JavaScript (⚠️ dangerous) |
+| `/servers` | List all servers the bot is in |
+| `/leaveserver <id>` | Leave a server |
+| `/refreshcommands` | Refresh slash commands |
 
 ## 📻 Radio Presets
 
@@ -291,10 +307,10 @@ npm run dev
 ### YouTube playback issues
 - Ensure yt-dlp is installed and up-to-date: `pip install -U yt-dlp`
 - YouTube may rate-limit requests. Try using cookies:
-  1. Open incognito window, log into YouTube
-  2. Open DevTools (F12) → Network tab
-  3. Copy the `Cookie` header value from any youtube.com request
-  4. Create `cookies.txt` in Netscape format or use a browser extension to export cookies
+  1. Export cookies from your browser in **Netscape/Mozilla format** using a browser extension (e.g., [Get cookies.txt](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc))
+  2. Save the file as `youtube-cookies.txt` in the project root (or `cookies.txt`)
+  3. Restart the bot — cookies are loaded automatically
+- If region-restricted: yt-dlp's `--geo-bypass` is enabled by default
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
 
 ### Bot won't connect to voice

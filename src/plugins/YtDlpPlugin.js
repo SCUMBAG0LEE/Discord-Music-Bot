@@ -65,13 +65,19 @@ async function findYtdlp() {
 }
 
 /**
- * Get cookie file path if exists
+ * Get cookie file path if exists (checks multiple filenames)
  * @returns {string|null}
  */
 function getCookiePath() {
-  const txtPath = path.join(process.cwd(), 'youtube-cookies.txt');
-  if (fs.existsSync(txtPath)) {
-    return txtPath;
+  const candidates = [
+    'youtube-cookies.txt',
+    'cookies.txt',
+  ];
+  for (const name of candidates) {
+    const filePath = path.join(process.cwd(), name);
+    if (fs.existsSync(filePath)) {
+      return filePath;
+    }
   }
   return null;
 }
@@ -92,7 +98,9 @@ async function runYtdlp(args, timeout = 30000) {
     const fullArgs = [
       '--no-warnings',
       '--no-check-certificates',
-      '--prefer-free-formats',
+      '--geo-bypass',
+      '--socket-timeout', '15',
+      '--extractor-retries', '3',
       ...args
     ];
     
@@ -297,31 +305,62 @@ class YtDlpPlugin extends PlayableExtractorPlugin {
     const videoId = song.id;
     console.log(`[yt-dlp] Getting stream URL for: ${videoId}`);
     
-    try {
-      const info = await runYtdlp([
-        '-f', 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
-        '-g',  // Get URL only
-        '--no-playlist',
-        `https://www.youtube.com/watch?v=${videoId}`
-      ], 20000);
-      
-      if (info?.raw) {
-        const url = info.raw.split('\n')[0];
-        console.log('[yt-dlp] Got stream URL successfully');
-        return url;
+    const maxRetries = 2;
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const info = await runYtdlp([
+          '-f', 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+          '-g',  // Get URL only
+          '--no-playlist',
+          `https://www.youtube.com/watch?v=${videoId}`
+        ], 20000);
+        
+        if (info?.raw) {
+          const url = info.raw.split('\n')[0];
+          console.log('[yt-dlp] Got stream URL successfully');
+          return url;
+        }
+        
+        throw new Error('No stream URL returned');
+      } catch (error) {
+        lastError = error;
+        console.error(`[yt-dlp] Stream URL attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+        if (attempt < maxRetries) {
+          // Wait before retrying (increases with each attempt)
+          await new Promise(r => setTimeout(r, attempt * 2000));
+        }
       }
-      
-      throw new Error('No stream URL returned');
-    } catch (error) {
-      console.error(`[yt-dlp] Failed to get stream URL: ${error.message}`);
-      throw error;
     }
+    
+    throw lastError;
   }
 
   async getRelatedSongs(song) {
-    // yt-dlp doesn't easily provide related videos
-    // Return empty array - autoplay will use DisTube's fallback
-    return [];
+    // yt-dlp doesn't expose YouTube's related videos directly,
+    // so we search for similar content based on the current song.
+    try {
+      const query = `${song.name} ${song.uploader?.name || ''}`.trim();
+      console.log(`[yt-dlp] Fetching related songs for: ${query}`);
+      const results = await this.search(query, 5);
+      // Filter out the current song
+      const filtered = results.filter(r => r.id !== song.id);
+      if (filtered.length === 0) return [];
+      // Return as Song objects
+      return filtered.slice(0, 3).map(r => this.createSong({
+        id: r.id,
+        title: r.title,
+        duration: r.duration,
+        thumbnail: r.thumbnail,
+        channel: r.channel,
+        view_count: parseInt(r.views) || 0,
+        webpage_url: r.url
+      }, {}, false));
+    } catch (error) {
+      console.error(`[yt-dlp] Failed to get related songs: ${error.message}`);
+      return [];
+    }
   }
 
   /**
