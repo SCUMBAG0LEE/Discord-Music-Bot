@@ -263,7 +263,11 @@ function getSourceColor(source) {
   const colors = {
     youtube: 0xFF0000,
     spotify: 0x1DB954,
-    soundcloud: 0xFF5500
+    soundcloud: 0xFF5500,
+    bandcamp: 0x1DA0C3,
+    vimeo: 0x1AB7EA,
+    twitch: 0x9146FF,
+    dailymotion: 0x0066DC
   };
   return colors[source] || 0x5865F2;
 }
@@ -272,7 +276,11 @@ function getSourceEmoji(source) {
   const emojis = {
     youtube: '🔴',
     spotify: '🟢',
-    soundcloud: '🟠'
+    soundcloud: '🟠',
+    bandcamp: '🔵',
+    vimeo: '🔵',
+    twitch: '🟣',
+    dailymotion: '🔷'
   };
   return emojis[source] || '🎵';
 }

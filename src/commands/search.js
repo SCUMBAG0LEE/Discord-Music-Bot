@@ -6,11 +6,20 @@ const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('search')
-    .setDescription('Search YouTube and choose a video interactively.')
+    .setDescription('Search YouTube or SoundCloud and choose a track interactively.')
     .addStringOption(option =>
       option.setName('query')
         .setDescription('Search term')
         .setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName('platform')
+        .setDescription('Which platform to search (default: YouTube)')
+        .setRequired(false)
+        .addChoices(
+          { name: 'YouTube', value: 'youtube' },
+          { name: 'SoundCloud', value: 'soundcloud' }
+        )
     ),
 
   async execute(interaction, client) {
@@ -35,8 +44,9 @@ module.exports = {
     await interaction.deferReply();
 
     const query = interaction.options.getString('query');
+    const platform = interaction.options.getString('platform') || 'youtube';
     
-    // Use yt-dlp plugin for YouTube search
+    // Use yt-dlp plugin for search
     let results;
     try {
       // Get the yt-dlp plugin stored on distube instance
@@ -45,7 +55,9 @@ module.exports = {
         return interaction.editReply({ content: '❌ Search functionality not available (yt-dlp plugin not found)' });
       }
       
-      results = await ytdlpPlugin.search(query, 10);
+      results = platform === 'soundcloud'
+        ? await ytdlpPlugin.searchSoundCloud(query, 10)
+        : await ytdlpPlugin.search(query, 10);
     } catch (err) {
       return interaction.editReply({ content: '❌ Search failed: ' + err.message });
     }
@@ -53,6 +65,8 @@ module.exports = {
     if (!results || !results.length) {
       return interaction.editReply({ content: '🔍 No results found.' });
     }
+
+    const platformLabel = platform === 'soundcloud' ? '🟠 SoundCloud' : '🔴 YouTube';
 
     const options = results.slice(0, 10).map((video, index) => ({
       label: truncate(video.title || 'Unknown', 100),
@@ -63,11 +77,11 @@ module.exports = {
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('search_select')
-        .setPlaceholder('Select a video')
+        .setPlaceholder('Select a track')
         .addOptions(options)
     );
 
-    await interaction.editReply({ content: '🔍 Select a video from the list below:', components: [row] });
+    await interaction.editReply({ content: `${platformLabel} — Select a track from the list below:`, components: [row] });
 
     const message = await interaction.fetchReply();
     const collector = message.createMessageComponentCollector({

@@ -233,6 +233,59 @@ function isYouTubeURL(url) {
 }
 
 /**
+ * Check if URL is a Bandcamp URL
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isBandcampURL(url) {
+  if (typeof url !== 'string') return false;
+  return /^https?:\/\/[a-z0-9-]+\.bandcamp\.com\/(track|album)\//i.test(url);
+}
+
+/**
+ * Check if URL is a Vimeo URL
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isVimeoURL(url) {
+  if (typeof url !== 'string') return false;
+  return /^https?:\/\/(www\.)?vimeo\.com\/\d+/i.test(url);
+}
+
+/**
+ * Check if URL is a direct HTTP audio/video stream
+ * (not a known platform URL — e.g. .mp3, .ogg, .flac, .wav, .m4a, .aac, .opus, .webm, .mp4, or generic stream)
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isDirectHTTPURL(url) {
+  if (typeof url !== 'string' || !isURL(url)) return false;
+  // Exclude known platforms that have their own handlers
+  if (isYouTubeURL(url) || isBandcampURL(url) || isVimeoURL(url)) return false;
+  if (/soundcloud\.com|spotify\.com|twitch\.tv/i.test(url)) return false;
+  // Accept common audio/video file extensions
+  if (/\.(mp3|ogg|opus|flac|wav|m4a|aac|webm|mp4|wma)(\?.*)?$/i.test(url)) return true;
+  // Accept common stream content types (M3U/PLS playlists, Icecast, etc.)
+  if (/\.(m3u8?|pls)(\?.*)?$/i.test(url)) return true;
+  return false;
+}
+
+/**
+ * Detect the source platform from a URL
+ * @param {string} url
+ * @returns {string}
+ */
+function detectSource(url) {
+  if (isYouTubeURL(url)) return 'youtube';
+  if (isBandcampURL(url)) return 'bandcamp';
+  if (isVimeoURL(url)) return 'vimeo';
+  if (/twitch\.tv/i.test(url)) return 'twitch';
+  if (/dailymotion\.com|dai\.ly/i.test(url)) return 'dailymotion';
+  if (isDirectHTTPURL(url)) return 'http';
+  return 'other';
+}
+
+/**
  * Check if URL is a playlist
  * @param {string} url
  * @returns {boolean}
@@ -275,12 +328,13 @@ class YtDlpPlugin extends ExtractorPlugin {
 
   validate(url) {
     if (typeof url !== 'string') return false;
-    // Accept YouTube URLs
-    if (isYouTubeURL(url)) return true;
     // Accept non-URL strings as search queries (e.g. from Spotify plugin)
-    // but reject URLs for other platforms (SoundCloud, Spotify, etc.)
     if (!isURL(url)) return true;
-    return false;
+    // Let dedicated plugins handle their own URLs
+    if (/soundcloud\.com|spotify\.com/i.test(url)) return false;
+    // Accept all other URLs — yt-dlp supports 1000+ extractors
+    // (YouTube, Bandcamp, Vimeo, Twitch, Dailymotion, direct HTTP, etc.)
+    return true;
   }
 
   async resolve(url, options) {
@@ -290,8 +344,72 @@ class YtDlpPlugin extends ExtractorPlugin {
       }
       return this.resolveVideo(url, options);
     }
+    // Any other URL — resolve via yt-dlp generically
+    // (Bandcamp, Vimeo, Twitch, Dailymotion, direct HTTP, etc.)
+    if (isURL(url)) {
+      return this.resolveGeneric(url, options);
+    }
     // Non-URL string = search query (from Spotify plugin etc.)
     return this.resolveSearch(url, options);
+  }
+
+  /**
+   * Resolve any URL that yt-dlp supports (Bandcamp, Vimeo, direct HTTP, etc.)
+   */
+  async resolveGeneric(url, options) {
+    const source = detectSource(url);
+    console.log(`[yt-dlp] Resolving ${source} URL: ${url}`);
+
+    // For Bandcamp album URLs, resolve as playlist
+    if (isBandcampURL(url) && /\/album\//i.test(url)) {
+      return this.resolveGenericPlaylist(url, source, options);
+    }
+
+    const info = await runYtdlp([
+      '-J',
+      '--no-playlist',
+      url
+    ], 30000);
+
+    if (!info || (!info.id && !info.title && !info.webpage_url)) {
+      throw new Error(`Failed to resolve ${source} URL`);
+    }
+
+    return this.createGenericSong(info, source, url, options);
+  }
+
+  /**
+   * Resolve a generic playlist (e.g. Bandcamp album)
+   */
+  async resolveGenericPlaylist(url, source, options) {
+    console.log(`[yt-dlp] Resolving ${source} playlist: ${url}`);
+
+    const info = await runYtdlp([
+      '-J',
+      '--flat-playlist',
+      '--playlist-end', '100',
+      url
+    ], 60000);
+
+    if (!info?.entries || info.entries.length === 0) {
+      throw new Error(`${source} playlist not found or empty`);
+    }
+
+    const songs = info.entries
+      .filter(entry => entry.id || entry.url || entry.webpage_url)
+      .map(entry => this.createGenericSong(entry, source, entry.webpage_url || entry.url || url, options));
+
+    if (songs.length === 0) {
+      throw new Error(`No playable tracks found in ${source} playlist`);
+    }
+
+    return new Playlist({
+      source,
+      songs,
+      name: info.title || `${source} Playlist`,
+      url,
+      thumbnail: info.thumbnail || songs[0]?.thumbnail
+    }, options);
   }
 
   async resolveSearch(query, options) {
@@ -403,7 +521,62 @@ class YtDlpPlugin extends ExtractorPlugin {
     return new Song(songData, options);
   }
 
+  /**
+   * Create a Song object for non-YouTube sources (Bandcamp, Vimeo, HTTP, etc.)
+   */
+  createGenericSong(info, source, originalUrl, options) {
+    const songData = {
+      plugin: this,
+      source,
+      playFromSource: true,
+      id: info.id || info.display_id || originalUrl,
+      name: info.title || info.fulltitle || 'Unknown',
+      url: info.webpage_url || originalUrl,
+      thumbnail: info.thumbnail || info.thumbnails?.[0]?.url || null,
+      duration: info.duration || 0,
+      formattedDuration: formatDuration(info.duration),
+      views: info.view_count || 0,
+      likes: info.like_count || 0,
+      isLive: info.is_live || false,
+      uploader: {
+        name: info.artist || info.creator || info.channel || info.uploader || 'Unknown',
+        url: info.artist_url || info.channel_url || info.uploader_url || null
+      }
+    };
+
+    return new Song(songData, options);
+  }
+
   async getStreamURL(song) {
+    const source = song.source || 'youtube';
+
+    // For non-YouTube sources, resolve the stream URL via yt-dlp using the page URL
+    if (source !== 'youtube') {
+      const target = song.url || song.id;
+      console.log(`[yt-dlp] Getting stream URL for ${source}: ${target}`);
+
+      // Direct HTTP URLs can often be streamed as-is
+      if (isDirectHTTPURL(target)) {
+        console.log('[yt-dlp] Direct HTTP URL — using as-is');
+        return target;
+      }
+
+      const info = await runYtdlp([
+        '-f', 'bestaudio/best',
+        '-g',
+        '--no-playlist',
+        target
+      ], 20000);
+
+      if (info?.raw) {
+        const url = info.raw.split('\n')[0];
+        console.log(`[yt-dlp] Got ${source} stream URL successfully`);
+        return url;
+      }
+      throw new Error(`Failed to get stream URL for ${source}`);
+    }
+
+    // YouTube — existing logic with retries
     const videoId = song.id;
     console.log(`[yt-dlp] Getting stream URL for: ${videoId}`);
     
@@ -511,7 +684,7 @@ class YtDlpPlugin extends ExtractorPlugin {
    * @returns {Promise<Array>}
    */
   async search(query, limit = 10) {
-    console.log(`[yt-dlp] Searching: ${query}`);
+    console.log(`[yt-dlp] Searching YouTube: ${query}`);
     
     try {
       const info = await runYtdlp([
@@ -533,10 +706,49 @@ class YtDlpPlugin extends ExtractorPlugin {
         durationFormatted: formatDuration(entry.duration),
         thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg`,
         channel: entry.channel || entry.uploader || 'Unknown',
-        views: entry.view_count ? `${(entry.view_count / 1000).toFixed(0)}K views` : '0 views'
+        views: entry.view_count ? `${(entry.view_count / 1000).toFixed(0)}K views` : '0 views',
+        source: 'youtube'
       }));
     } catch (error) {
-      console.error(`[yt-dlp] Search failed: ${error.message}`);
+      console.error(`[yt-dlp] YouTube search failed: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Search SoundCloud for tracks via yt-dlp
+   * @param {string} query - Search query
+   * @param {number} limit - Max results (default 10)
+   * @returns {Promise<Array>}
+   */
+  async searchSoundCloud(query, limit = 10) {
+    console.log(`[yt-dlp] Searching SoundCloud: ${query}`);
+
+    try {
+      const info = await runYtdlp([
+        '-J',
+        '--flat-playlist',
+        '--playlist-end', String(limit),
+        `scsearch${limit}:${query}`
+      ], 15000);
+
+      if (!info?.entries) {
+        return [];
+      }
+
+      return info.entries.map(entry => ({
+        id: entry.id || entry.display_id,
+        title: entry.title || 'Unknown',
+        url: entry.webpage_url || entry.url,
+        duration: entry.duration || 0,
+        durationFormatted: formatDuration(entry.duration),
+        thumbnail: entry.thumbnail || entry.thumbnails?.[0]?.url || null,
+        channel: entry.uploader || entry.artist || 'Unknown',
+        views: entry.view_count ? `${(entry.view_count / 1000).toFixed(0)}K views` : '0 views',
+        source: 'soundcloud'
+      }));
+    } catch (error) {
+      console.error(`[yt-dlp] SoundCloud search failed: ${error.message}`);
       return [];
     }
   }
@@ -558,4 +770,4 @@ class YtDlpPlugin extends ExtractorPlugin {
   }
 }
 
-module.exports = { YtDlpPlugin, findYtdlp, isYouTubeURL };
+module.exports = { YtDlpPlugin, findYtdlp, isYouTubeURL, isBandcampURL, isVimeoURL, isDirectHTTPURL };

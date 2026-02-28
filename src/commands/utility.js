@@ -71,7 +71,7 @@ const commands = {
             inline: true
           }
         ])
-        .setFooter({ text: 'Use /help <category> for more details • Supports YouTube, Spotify, SoundCloud & Radio!' });
+        .setFooter({ text: 'Use /help <category> for more details • Supports YouTube, Spotify, SoundCloud, Bandcamp, Vimeo & more!' });
 
       return interaction.reply({ embeds: [helpEmbed] });
     }

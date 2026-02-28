@@ -90,20 +90,28 @@ const commands = {
         return interaction.editReply({ content: '❌ ' + error });
       }
 
-      // Play each song URL in sequence
-      try {
-        await interaction.editReply('📂 Loading playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)...');
-        
-        for (const song of playlist.songs) {
+      // Play each song URL in sequence (skip individual failures)
+      await interaction.editReply('📂 Loading playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)...');
+      
+      let loaded = 0;
+      let failed = 0;
+      for (const song of playlist.songs) {
+        try {
           await client.distube.play(voiceChannel, song.url, {
             textChannel: interaction.channel,
             member: interaction.member
           });
+          loaded++;
+        } catch (err) {
+          failed++;
         }
-        return interaction.editReply('✅ Loaded playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)');
-      } catch (err) {
-        return interaction.editReply('❌ Failed to load playlist: ' + err.message);
       }
+
+      if (loaded === 0) {
+        return interaction.editReply('❌ Failed to load any songs from playlist **' + playlist.name + '**');
+      }
+      const failedNote = failed > 0 ? ` (${failed} failed)` : '';
+      return interaction.editReply('✅ Loaded playlist **' + playlist.name + '** (' + loaded + ' songs)' + failedNote);
     }
   },
 

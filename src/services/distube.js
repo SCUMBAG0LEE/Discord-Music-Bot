@@ -4,6 +4,7 @@
  */
 
 const { DisTube, Events } = require('distube');
+const { ActivityType } = require('discord.js');
 const { YtDlpPlugin } = require('../plugins/YtDlpPlugin');
 const { SpotifyPlugin } = require('@distube/spotify');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
@@ -11,12 +12,25 @@ const { logger } = require('../utils/logger');
 const { loadSettings } = require('./serverSettings');
 const { getPlaylist } = require('./playlists');
 
+/**
+ * Build presence options for a song in status.
+ * YouTube/Twitch URLs get Streaming type (purple badge + clickable link),
+ * everything else gets Playing type.
+ */
+function songPresenceOpts(url) {
+  if (url && /(?:youtube\.com|youtu\.be|twitch\.tv)\b/i.test(url)) {
+    return { type: ActivityType.Streaming, url };
+  }
+  return { type: ActivityType.Playing };
+}
+
 // FFmpeg filter presets for audio effects
 const filterPresets = {
   bassboost: 'bass=g=10',
   '3d': 'apulsator=hz=0.125',
   vaporwave: 'asetrate=44100*0.8,aresample=44100,atempo=1.1',
   nightcore: 'asetrate=44100*1.25,aresample=44100',
+
   phaser: 'aphaser=in_gain=0.4',
   tremolo: 'tremolo',
   vibrato: 'vibrato=f=6.5',
@@ -149,12 +163,13 @@ function setupEvents(distube, client) {
       if (client.config?.songInStatus || queue.songInStatus) {
         const activeQueues = distube.queues.size;
         
-        // Show generic status if playing in multiple servers
-        const statusName = activeQueues > 1 
-          ? 'music in multiple servers'
-          : song.name.slice(0, 128);
-        
-        client.user.setPresence(client.buildPresence(statusName));
+        if (activeQueues > 1) {
+          // Multiple servers — "Listening to music in multiple servers"
+          client.user.setPresence(client.buildPresence('music in multiple servers', { type: ActivityType.Listening }));
+        } else {
+          // Single server — Streaming for YouTube/Twitch (purple badge), Playing for others
+          client.user.setPresence(client.buildPresence(song.name.slice(0, 128), songPresenceOpts(song.url)));
+        }
       }
     })
     .on(Events.ADD_SONG, async (queue, song) => {
@@ -275,12 +290,13 @@ function setupEvents(distube, client) {
         const remainingQueues = distube.queues.size - 1;
         
         if (remainingQueues > 1) {
-          client.user.setPresence(client.buildPresence('music in multiple servers'));
+          client.user.setPresence(client.buildPresence('music in multiple servers', { type: ActivityType.Listening }));
         } else if (remainingQueues === 1) {
           // Find the other (still-playing) queue
           for (const q of distube.queues.values()) {
             if (q.id !== queue.id && q.songs?.[0]) {
-              client.user.setPresence(client.buildPresence(q.songs[0].name.slice(0, 128)));
+              const s = q.songs[0];
+              client.user.setPresence(client.buildPresence(s.name.slice(0, 128), songPresenceOpts(s.url)));
               break;
             }
           }
@@ -311,12 +327,13 @@ function setupEvents(distube, client) {
         const remainingQueues = distube.queues.size - 1; // -1 because this queue is being removed
         
         if (remainingQueues > 1) {
-          client.user.setPresence(client.buildPresence('music in multiple servers'));
+          client.user.setPresence(client.buildPresence('music in multiple servers', { type: ActivityType.Listening }));
         } else if (remainingQueues === 1) {
           // Find the remaining queue
           for (const q of distube.queues.values()) {
             if (q.id !== queue.id && q.songs?.[0]) {
-              client.user.setPresence(client.buildPresence(q.songs[0].name.slice(0, 128)));
+              const s = q.songs[0];
+              client.user.setPresence(client.buildPresence(s.name.slice(0, 128), songPresenceOpts(s.url)));
               break;
             }
           }

@@ -1,14 +1,20 @@
 # 🎵 Discord Music Bot
 
-A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, and Radio** support, built with discord.js v14 and [DisTube](https://distube.js.org/) using **yt-dlp** for reliable YouTube playback.
+A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, Bandcamp, Vimeo, Twitch, and Radio** support, built with discord.js v14 and [DisTube](https://distube.js.org/) using **yt-dlp** for reliable playback.
 
 ## ✨ Features
 
 ### 🎶 Multi-Platform Support
 - **YouTube** — Songs, playlists, and interactive search (via yt-dlp)
 - **Spotify** — Tracks, playlists, and albums (auto-converts to YouTube)
-- **SoundCloud** — Tracks and playlists
+- **SoundCloud** — Tracks, playlists, and interactive search
+- **Bandcamp** — Tracks and albums
+- **Vimeo** — Videos
+- **Twitch** — Live streams (purple Streaming badge when shown in status)
+- **Dailymotion** — Videos
+- **Direct HTTP** — MP3, FLAC, OGG, WAV, M3U/PLS streams, and other audio URLs
 - **Radio/Streams** — Built-in presets and custom stream URLs
+- **1000+ sites** — Any URL [supported by yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) works automatically
 
 ### 📋 Queue Management
 - Paginated queue display
@@ -43,7 +49,7 @@ src/
 ├── index.js                 # Entry point & command loader
 ├── commands/
 │   ├── play.js              # /play - Multi-platform playback
-│   ├── search.js            # /search - Interactive YouTube search
+│   ├── search.js            # /search - Interactive YouTube/SoundCloud search
 │   ├── queue.js             # /queue - Paginated queue display
 │   ├── playback.js          # /pause, /resume, /stop, /volume, /skip, /np, /previous
 │   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump, /skipto
@@ -132,6 +138,14 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `BOT_STATUS` | ❌ | `online`, `idle`, `dnd`, or `invisible` (default: `online`) |
 | `SONG_IN_STATUS` | ❌ | Show current song as bot activity (`true`/`false`, default: `false`) |
 
+> **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
+> | Scenario | Activity |
+> |----------|----------|
+> | Playing a YouTube song (1 server) | **Streaming** `Song Name` (purple badge + clickable link) |
+> | Playing from other sources (1 server) | **Playing** `Song Name` |
+> | Playing in 2+ servers | **Listening to** `music in multiple servers` |
+> | Idle / no queues | Reverts to your `.env` configured activity |
+
 > ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
 
 ### yt-dlp (YouTube Backend)
@@ -165,8 +179,8 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 ### 🎶 Playing Music
 | Command | Description |
 |---------|-------------|
-| `/play <query>` | Play from YouTube/Spotify/SoundCloud URL or search |
-| `/search <query>` | Interactive YouTube search with selection |
+| `/play <query>` | Play from YouTube/Spotify/SoundCloud/Bandcamp/Vimeo URL or search |
+| `/search <query> [platform]` | Interactive search with selection (YouTube or SoundCloud) |
 | `/radio <preset\|url>` | Play radio stream (see presets below) |
 
 ### ⏯️ Playback Control
@@ -282,12 +296,15 @@ Use `/filters <filter>` to toggle audio effects:
 | `nightcore` | Sped up + higher pitch |
 | `vaporwave` | Slowed down + lower pitch |
 | `3d` | 3D spatial audio |
-| `echo` | Echo/reverb effect |
+| `tremolo` | Wavering volume effect |
+| `vibrato` | Wavering pitch effect |
 | `karaoke` | Remove vocals |
-| `surround` | Surround sound |
-| `slow` | Slow playback |
-| `fast` | Fast playback |
-| `clear` | Remove all filters |
+| `treble` | Enhanced treble |
+| `subboost` | Enhanced sub-bass |
+| `phaser` | Phaser sweep effect |
+
+Additional filters available via `/filter`: `reverse`, `normalizer`, `surrounding`, `pulsator`, `flanger`, `gate`, `haas`, `mcompand`, `earwax`.
+Use `/clearfilter` to remove all active filters.
 
 ## 🛠️ Development
 

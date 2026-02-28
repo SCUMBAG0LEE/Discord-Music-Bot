@@ -70,8 +70,8 @@ function buildPresence(name, opts = {}) {
   const status = opts.status ?? config.status;
   const activity = { name, type };
   // Streaming requires a url (Twitch or YouTube) for the purple badge
-  if (type === ActivityType.Streaming && config.streamingUrl) {
-    activity.url = config.streamingUrl;
+  if (type === ActivityType.Streaming) {
+    activity.url = opts.url || config.streamingUrl;
   }
   return { activities: [activity], status };
 }

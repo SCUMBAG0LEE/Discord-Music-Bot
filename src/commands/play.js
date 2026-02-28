@@ -7,7 +7,7 @@ const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('play')
-    .setDescription('Play from YouTube, Spotify, SoundCloud, or a direct URL/stream.')
+    .setDescription('Play from YouTube, Spotify, SoundCloud, Bandcamp, Vimeo, or a direct URL/stream.')
     .addStringOption(option =>
       option.setName('query')
         .setDescription('URL, search term, or radio preset (lofi, jazz, classical, chillhop, synthwave)')

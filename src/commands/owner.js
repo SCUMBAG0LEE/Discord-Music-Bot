@@ -352,7 +352,9 @@ const commands = {
         }
         
         // Hide token if accidentally exposed
-        output = output.replace(new RegExp(process.env.BOT_TOKEN, 'gi'), '[TOKEN]');
+        if (process.env.BOT_TOKEN) {
+          output = output.replace(new RegExp(process.env.BOT_TOKEN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[TOKEN]');
+        }
         
         return interaction.reply({ content: `\`\`\`js\n${output}\n\`\`\``, ephemeral: true });
       } catch (error) {
@@ -371,10 +373,10 @@ const commands = {
         return ownerOnlyError(interaction);
       }
 
-      const guilds = client.guilds.cache
+      const guilds = [...client.guilds.cache.values()]
         .sort((a, b) => b.memberCount - a.memberCount)
-        .map((g, i) => `${i + 1}. **${g.name}** (${g.memberCount} members)`)
-        .slice(0, 25);
+        .slice(0, 25)
+        .map((g, i) => `${i + 1}. **${g.name}** (${g.memberCount} members)`);
 
       const embed = new EmbedBuilder()
         .setTitle(`📊 Servers (${client.guilds.cache.size} total)`)
