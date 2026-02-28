@@ -25,7 +25,7 @@ A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, Bandcamp, 
 ### 💾 Saved Playlists
 - Save current queue as a reusable playlist
 - Load, append, and delete your playlists
-- Server-specific playlist storage
+- Personal per-user playlist storage
 
 ### ⏯️ Advanced Playback
 - **Seek** — Jump to any timestamp in a song
@@ -36,6 +36,7 @@ A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, Bandcamp, 
 - **Vote Skip** — Democratic skipping with configurable ratio
 - **Audio Filters** — Bass boost, nightcore, vaporwave, and more
 - **Lyrics** — Fetch song lyrics automatically
+- **Song in Status** — Show current song as bot activity (Streaming badge for YouTube/Twitch)
 
 ### 🎛️ Rich Now Playing
 - Progress bar with elapsed/total time
@@ -315,6 +316,7 @@ npm run dev
 
 ## 📜 Version History
 
+- **v5.1.0** — Audio quality & reliability: sodium-native for Opus encryption, SoundCloud routed through yt-dlp (fixed premature stream close), disconnect/reconnect race condition fix, auto-playlist infinite loop guard, song-in-status with Streaming badge, FFmpeg reconnect & CRLF headers, Dailymotion support, 5 full code audits with 20+ bug fixes
 - **v5.0.0** — Major refactor: Added server settings, admin commands, lyrics, DJ role per-server, fair queue, vote skip ratio, max duration, and more
 - **v4.3.0** — Switched to yt-dlp for reliable YouTube playback
 - **v4.2.0** — Switched to custom yt-dlp plugin for better YouTube compatibility
