@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isGuildInteraction, isDJ, getVoiceChannel } = require('../utils/permissions');
-const { formatDuration } = require('../utils/formatters');
+const { formatDuration, parseTimestamp } = require('../utils/formatters');
 const distubeService = require('../services/distube');
+const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
 
 const commands = {
   // Seek to timestamp
@@ -217,6 +218,15 @@ const commands = {
         return interaction.reply({ content: 'You must join a voice channel first!', ephemeral: true });
       }
 
+      // Check voice channel lock
+      if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
+        const settings = loadSettings(interaction.guildId);
+        return interaction.reply({ 
+          content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+          ephemeral: true 
+        });
+      }
+
       await interaction.deferReply();
 
       const presetUrl = distubeService.getRadioPreset(station);
@@ -238,22 +248,6 @@ const commands = {
 };
 
 // Helper functions
-function parseTimestamp(str) {
-  const parts = str.split(':').map(p => parseInt(p, 10));
-  
-  if (parts.some(isNaN)) return null;
-  
-  if (parts.length === 1) {
-    return parts[0]; // Just seconds
-  } else if (parts.length === 2) {
-    return parts[0] * 60 + parts[1]; // mm:ss
-  } else if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2]; // hh:mm:ss
-  }
-  
-  return null;
-}
-
 function createProgressBar(progress, length = 15) {
   const filled = Math.round(progress * length);
   const empty = length - filled;

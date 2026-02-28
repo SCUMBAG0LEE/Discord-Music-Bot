@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const playlistService = require('../services/playlists');
 const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
+const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
 
 const commands = {
   // Save current queue as playlist
@@ -71,6 +72,15 @@ const commands = {
         return interaction.reply({ content: 'You must join a voice channel first!', ephemeral: true });
       }
 
+      // Check voice channel lock
+      if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
+        const settings = loadSettings(interaction.guildId);
+        return interaction.reply({ 
+          content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+          ephemeral: true 
+        });
+      }
+
       await interaction.deferReply();
 
       const name = interaction.options.getString('name');
@@ -82,13 +92,15 @@ const commands = {
 
       // Play each song URL in sequence
       try {
+        await interaction.editReply('📂 Loading playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)...');
+        
         for (const song of playlist.songs) {
           await client.distube.play(voiceChannel, song.url, {
             textChannel: interaction.channel,
             member: interaction.member
           });
         }
-        return interaction.editReply('📂 Loading playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)');
+        return interaction.editReply('✅ Loaded playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)');
       } catch (err) {
         return interaction.editReply('❌ Failed to load playlist: ' + err.message);
       }

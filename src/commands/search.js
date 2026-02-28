@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js');
 const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
 const { truncate, formatDuration } = require('../utils/formatters');
+const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -20,6 +21,15 @@ module.exports = {
     const voiceChannel = getVoiceChannel(interaction.member);
     if (!voiceChannel) {
       return interaction.reply({ content: 'You must join a voice channel first!', ephemeral: true });
+    }
+
+    // Check voice channel lock
+    if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
+      const settings = loadSettings(interaction.guildId);
+      return interaction.reply({ 
+        content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+        ephemeral: true 
+      });
     }
 
     await interaction.deferReply();

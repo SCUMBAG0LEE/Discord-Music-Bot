@@ -267,14 +267,19 @@ function setupEvents(distube, client) {
       
       // Reset bot status - but check if other queues are still active
       if (client.config?.songInStatus || queue.songInStatus) {
-        const remainingQueues = distube.queues.size;
+        // NOTE: During FINISH the finishing queue is still in the map,
+        // so we subtract 1 just like we do in DISCONNECT.
+        const remainingQueues = distube.queues.size - 1;
         
         if (remainingQueues > 1) {
           client.user.setPresence(client.buildPresence('music in multiple servers'));
         } else if (remainingQueues === 1) {
-          const otherQueue = distube.queues.first();
-          if (otherQueue?.songs?.[0]) {
-            client.user.setPresence(client.buildPresence(otherQueue.songs[0].name.slice(0, 128)));
+          // Find the other (still-playing) queue
+          for (const q of distube.queues.values()) {
+            if (q.id !== queue.id && q.songs?.[0]) {
+              client.user.setPresence(client.buildPresence(q.songs[0].name.slice(0, 128)));
+              break;
+            }
           }
         } else {
           // No queues left - reset to default status
@@ -320,14 +325,14 @@ function setupEvents(distube, client) {
     })
     .on(Events.INIT_QUEUE, queue => {
       logger.queue(queue.id, 'Queue initialized');
-      // Set default queue properties
-      queue.volume = client.config?.defaultVolume || 100;
+      // Set default queue properties (per-server overrides global)
+      const settings = loadSettings(queue.id);
+      queue.volume = settings.defaultVolume ?? client.config?.defaultVolume ?? 50;
       queue.autoplay = false;
       queue.votes = new Set(); // For vote skip
       queue.skipVotes = new Set(); // For vote skip tracking
       
       // Load server-specific settings
-      const settings = loadSettings(queue.id);
       queue.songInStatus = settings.songInStatus || false;
       queue.stayInChannel = settings.stayInChannel || false;
     })

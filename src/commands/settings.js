@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isDJ, djOnlyError, isGuildInteraction } = require('../utils/permissions');
-const { loadSettings, setSetting, getEffectiveSkipRatio } = require('../services/serverSettings');
+const { loadSettings, setSetting, getEffectiveSkipRatio, canUseVoiceChannel } = require('../services/serverSettings');
 
 const commands = {
   settings: {
@@ -33,6 +33,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       const sub = interaction.options.getSubcommand();
       const settings = loadSettings(interaction.guildId);
       const defaults = client.config || {};
@@ -127,8 +131,18 @@ const commands = {
         await queue.skip();
         return interaction.reply(`⏭️ Force skipped **${current.name}**`);
       } catch (error) {
-        // If skip fails (no more songs), stop instead
+        // If skip fails (no more songs), stop and disconnect
+        client.clearGuildTimeout?.(interaction.guildId);
         await queue.stop();
+        client.clearGuildTimeout?.(interaction.guildId);
+        try {
+          const { getVoiceConnection } = require('@discordjs/voice');
+          const conn = getVoiceConnection(interaction.guildId);
+          if (conn) conn.destroy();
+          else if (interaction.guild?.members?.me?.voice?.channel) {
+            interaction.guild.members.me.voice.disconnect();
+          }
+        } catch {}
         return interaction.reply(`⏹️ Skipped **${current.name}** - queue is now empty`);
       }
     }
@@ -181,7 +195,17 @@ const commands = {
           await queue.skip();
           return interaction.reply(`⏭️ Vote passed! Skipped **${current.name}**`);
         } catch (error) {
+          client.clearGuildTimeout?.(interaction.guildId);
           await queue.stop();
+          client.clearGuildTimeout?.(interaction.guildId);
+          try {
+            const { getVoiceConnection } = require('@discordjs/voice');
+            const conn = getVoiceConnection(interaction.guildId);
+            if (conn) conn.destroy();
+            else if (interaction.guild?.members?.me?.voice?.channel) {
+              interaction.guild.members.me.voice.disconnect();
+            }
+          } catch {}
           return interaction.reply(`⏹️ Vote passed! Skipped **${current.name}** - queue is now empty`);
         }
       }
@@ -212,6 +236,15 @@ const commands = {
       const voiceChannel = interaction.member.voice.channel;
       if (!voiceChannel) {
         return interaction.reply({ content: 'You must be in a voice channel.', ephemeral: true });
+      }
+
+      // Check voice channel lock
+      if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
+        const settings = loadSettings(interaction.guildId);
+        return interaction.reply({ 
+          content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+          ephemeral: true 
+        });
       }
 
       await interaction.deferReply();
@@ -268,6 +301,15 @@ const commands = {
         return interaction.reply({ content: 'You must be in a voice channel.', ephemeral: true });
       }
 
+      // Check voice channel lock
+      if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
+        const settings = loadSettings(interaction.guildId);
+        return interaction.reply({ 
+          content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+          ephemeral: true 
+        });
+      }
+
       await interaction.deferReply();
 
       const query = interaction.options.getString('query');
@@ -312,6 +354,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!isDJ(interaction.member, client)) {
         return djOnlyError(interaction);
       }

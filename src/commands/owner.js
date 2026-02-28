@@ -156,7 +156,14 @@ const commands = {
 
       const status = interaction.options.getString('status');
 
-      client.user.setPresence({ status });
+      // Persist so future presence updates keep this status
+      client.config.status = status;
+
+      // Rebuild presence with current activity but new status
+      client.user.setPresence(client.buildPresence(
+        client.user.presence.activities?.[0]?.name || client.config.activityName,
+        { status }
+      ));
       return interaction.reply({ content: `✅ Status set to **${status}**`, ephemeral: true });
     }
   },
@@ -194,6 +201,9 @@ const commands = {
 
       if (type === 'NONE') {
         client.user.setPresence({ activities: [] });
+        // Reset config to defaults so future updates use defaults
+        client.config.activityType = ActivityType.Listening;
+        client.config.activityName = 'music | /help';
         return interaction.reply({ content: '✅ Activity cleared', ephemeral: true });
       }
 
@@ -205,6 +215,10 @@ const commands = {
         'STREAMING': ActivityType.Streaming
       };
 
+      // Persist into config so future presence updates keep this activity
+      client.config.activityType = activityTypes[type];
+      client.config.activityName = text;
+
       const activity = { name: text, type: activityTypes[type] };
       // Streaming needs a URL for the purple badge
       if (type === 'STREAMING' && client.config?.streamingUrl) {
@@ -212,7 +226,8 @@ const commands = {
       }
 
       client.user.setPresence({
-        activities: [activity]
+        activities: [activity],
+        status: client.config.status
       });
 
       return interaction.reply({ content: `✅ Activity set to **${type}** ${text}`, ephemeral: true });
@@ -231,13 +246,21 @@ const commands = {
 
       await interaction.reply({ content: '👋 Shutting down...', ephemeral: true });
       
-      // Stop all queues
-      for (const [guildId, queue] of client.distube.queues) {
+      // Snapshot queue IDs first — queue.stop() modifies the collection
+      const guildIds = [...client.distube.queues.keys()];
+      for (const guildId of guildIds) {
         try {
-          await queue.stop();
+          const queue = client.distube.getQueue(guildId);
+          if (queue) await queue.stop();
         } catch (e) {
           // Ignore errors during shutdown
         }
+        // Force disconnect voice (queue.stop doesn't leave in v5)
+        try {
+          const { getVoiceConnection } = require('@discordjs/voice');
+          const conn = getVoiceConnection(guildId);
+          if (conn) conn.destroy();
+        } catch {}
       }
 
       // Disconnect from Discord

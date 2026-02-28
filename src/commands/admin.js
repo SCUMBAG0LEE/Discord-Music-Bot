@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
-const { isDJ, isOwner, djOnlyError, ownerOnlyError } = require('../utils/permissions');
+const { isDJ, isOwner, djOnlyError, ownerOnlyError, isGuildInteraction } = require('../utils/permissions');
 const { loadSettings, setSetting } = require('../services/serverSettings');
 const { getPlaylist, listPlaylists } = require('../services/playlists');
 
@@ -29,6 +29,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!isDJ(interaction.member, client)) {
         return djOnlyError(interaction);
       }
@@ -83,6 +87,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       // Check admin permissions
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
@@ -111,6 +119,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       // Check admin permissions
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
@@ -143,6 +155,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
       }
@@ -170,6 +186,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
       }
@@ -210,6 +230,10 @@ const commands = {
     },
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
       }
@@ -244,6 +268,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
       }
@@ -265,6 +293,10 @@ const commands = {
       .setDescription('View all server settings (Admin only)'),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
       }
@@ -343,6 +375,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
       }
@@ -379,6 +415,10 @@ const commands = {
       ),
 
     async execute(interaction, client) {
+      if (!isGuildInteraction(interaction)) {
+        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      }
+
       if (!interaction.member.permissions.has('Administrator') && !isOwner(interaction.user.id, client)) {
         return interaction.reply({ content: '🔒 This command requires Administrator permission.', ephemeral: true });
       }
