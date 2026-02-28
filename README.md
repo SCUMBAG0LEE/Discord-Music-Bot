@@ -126,6 +126,11 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `GUILD_ID` | ❌ | Register commands to a single guild (instant, for testing) |
 | `SPOTIFY_CLIENT_ID` | ⚠️ | From [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
 | `SPOTIFY_CLIENT_SECRET` | ⚠️ | From Spotify Developer Dashboard |
+| `ACTIVITY_TYPE` | ❌ | `PLAYING`, `LISTENING`, `WATCHING`, `COMPETING`, or `STREAMING` (default: `LISTENING`) |
+| `ACTIVITY_NAME` | ❌ | Activity text (default: `music \| /help`) |
+| `STREAMING_URL` | ❌ | Twitch or YouTube URL — required only if `ACTIVITY_TYPE=STREAMING` |
+| `BOT_STATUS` | ❌ | `online`, `idle`, `dnd`, or `invisible` (default: `online`) |
+| `SONG_IN_STATUS` | ❌ | Show current song as bot activity (`true`/`false`, default: `false`) |
 
 > ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
 
@@ -241,7 +246,7 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/setbanner <image>` | Change bot banner |
 | `/setname <name>` | Change bot username |
 | `/setstatus <status>` | Set bot status (online/idle/dnd/invisible) |
-| `/setgame <activity>` | Set bot activity |
+| `/setgame <activity>` | Set bot activity (Playing/Listening/Watching/Competing/Streaming) |
 | `/shutdown` | Shut down the bot |
 | `/debug` | Show bot debug info |
 | `/eval <code>` | Evaluate JavaScript (⚠️ dangerous) |
@@ -309,7 +314,8 @@ npm run dev
 - YouTube may rate-limit requests. Try using cookies:
   1. Export cookies from your browser in **Netscape/Mozilla format** using a browser extension (e.g., [Get cookies.txt](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc))
   2. Save the file as `youtube-cookies.txt` in the project root (or `cookies.txt`)
-  3. Restart the bot — cookies are loaded automatically
+  3. **JSON format** (e.g. from EditThisCookie) is also accepted — it's converted automatically
+  4. Restart the bot — cookies are loaded automatically
 - If region-restricted: yt-dlp's `--geo-bypass` is enabled by default
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
 

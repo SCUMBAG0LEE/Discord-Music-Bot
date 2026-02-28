@@ -39,6 +39,7 @@ const config = {
   songInStatus: process.env.SONG_IN_STATUS === 'true',             // show current song in bot status
   activityType: parseActivityType(process.env.ACTIVITY_TYPE),
   activityName: process.env.ACTIVITY_NAME || 'music | /help',
+  streamingUrl: process.env.STREAMING_URL || 'https://youtu.be/TZroYsFCr50?si=EPq3vyH4gA-Hn7FN',
   status: process.env.BOT_STATUS || 'online'
 };
 
@@ -54,6 +55,28 @@ const client = new Client({
 
 // Attach config to client
 client.config = config;
+
+/**
+ * Build a presence object respecting the configured activity type.
+ * If the configured type is Streaming, all status updates use Streaming + the URL.
+ * @param {string} name - Activity text
+ * @param {object} [opts] - Optional overrides
+ * @param {number} [opts.type] - Override activity type
+ * @param {string} [opts.status] - Override online status
+ * @returns {import('discord.js').PresenceData}
+ */
+function buildPresence(name, opts = {}) {
+  const type = opts.type ?? config.activityType;
+  const status = opts.status ?? config.status;
+  const activity = { name, type };
+  // Streaming requires a url (Twitch or YouTube) for the purple badge
+  if (type === ActivityType.Streaming && config.streamingUrl) {
+    activity.url = config.streamingUrl;
+  }
+  return { activities: [activity], status };
+}
+
+client.buildPresence = buildPresence;
 
 // Song in status tracking (global toggle)
 client.songInStatus = false;
@@ -256,24 +279,8 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 client.once('clientReady', async () => {
   console.log(`\n🤖 Logged in as ${client.user.tag}`);
 
-  // NEW: Activity Configuration Logic
-  const activityConfig = {
-    name: config.activityName,
-    type: config.activityType
-  };
-
-  // If the type is STREAMING, we move the activityName to the 'url' field
-  // and set a generic name (or you can customize the name here).
-  if (config.activityType === ActivityType.Streaming) {
-    activityConfig.url = config.activityName; // Use the URL from .env
-    activityConfig.name = "/help";      // This is the "Streaming [Name]" text
-  }
-
   // Set activity and status from config
-  client.user.setPresence({
-    activities: [activityConfig],
-    status: config.status
-  });
+  client.user.setPresence(buildPresence(config.activityName));
 
   await registerCommands();
 

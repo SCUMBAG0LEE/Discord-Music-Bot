@@ -144,7 +144,6 @@ function setupEvents(distube, client) {
       
       // Update bot status with current song if enabled
       if (client.config?.songInStatus || queue.songInStatus) {
-        const { ActivityType } = require('discord.js');
         const activeQueues = distube.queues.size;
         
         // Show generic status if playing in multiple servers
@@ -152,10 +151,7 @@ function setupEvents(distube, client) {
           ? 'music in multiple servers'
           : song.name.slice(0, 128);
         
-        client.user.setPresence({
-          activities: [{ name: statusName, type: ActivityType.Listening }],
-          status: client.config?.status || 'online'
-        });
+        client.user.setPresence(client.buildPresence(statusName));
       }
     })
     .on(Events.ADD_SONG, async (queue, song) => {
@@ -271,30 +267,18 @@ function setupEvents(distube, client) {
       
       // Reset bot status - but check if other queues are still active
       if (client.config?.songInStatus || queue.songInStatus) {
-        const { ActivityType } = require('discord.js');
         const remainingQueues = distube.queues.size;
         
         if (remainingQueues > 1) {
-          // Other servers are still playing - show generic status
-          client.user.setPresence({
-            activities: [{ name: 'music in multiple servers', type: ActivityType.Listening }],
-            status: client.config?.status || 'online'
-          });
+          client.user.setPresence(client.buildPresence('music in multiple servers'));
         } else if (remainingQueues === 1) {
-          // One other queue left - find it and show that song
           const otherQueue = distube.queues.first();
           if (otherQueue?.songs?.[0]) {
-            client.user.setPresence({
-              activities: [{ name: otherQueue.songs[0].name.slice(0, 128), type: ActivityType.Listening }],
-              status: client.config?.status || 'online'
-            });
+            client.user.setPresence(client.buildPresence(otherQueue.songs[0].name.slice(0, 128)));
           }
         } else {
           // No queues left - reset to default status
-          client.user.setPresence({
-            activities: [{ name: client.config?.activityName || 'music | /help', type: client.config?.activityType || ActivityType.Listening }],
-            status: client.config?.status || 'online'
-          });
+          client.user.setPresence(client.buildPresence(client.config?.activityName || 'music | /help'));
         }
       }
       
@@ -316,31 +300,21 @@ function setupEvents(distube, client) {
       
       // Update status if needed (similar to FINISH)
       if (client.config?.songInStatus || queue.songInStatus) {
-        const { ActivityType } = require('discord.js');
         const remainingQueues = distube.queues.size - 1; // -1 because this queue is being removed
         
         if (remainingQueues > 1) {
-          client.user.setPresence({
-            activities: [{ name: 'music in multiple servers', type: ActivityType.Listening }],
-            status: client.config?.status || 'online'
-          });
+          client.user.setPresence(client.buildPresence('music in multiple servers'));
         } else if (remainingQueues === 1) {
           // Find the remaining queue
           for (const q of distube.queues.values()) {
             if (q.id !== queue.id && q.songs?.[0]) {
-              client.user.setPresence({
-                activities: [{ name: q.songs[0].name.slice(0, 128), type: ActivityType.Listening }],
-                status: client.config?.status || 'online'
-              });
+              client.user.setPresence(client.buildPresence(q.songs[0].name.slice(0, 128)));
               break;
             }
           }
         } else {
           // No queues left
-          client.user.setPresence({
-            activities: [{ name: client.config?.activityName || 'music | /help', type: client.config?.activityType || ActivityType.Listening }],
-            status: client.config?.status || 'online'
-          });
+          client.user.setPresence(client.buildPresence(client.config?.activityName || 'music | /help'));
         }
       }
     })

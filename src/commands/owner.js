@@ -174,6 +174,7 @@ const commands = {
             { name: '🎧 Listening', value: 'LISTENING' },
             { name: '📺 Watching', value: 'WATCHING' },
             { name: '🏆 Competing', value: 'COMPETING' },
+            { name: '🟣 Streaming', value: 'STREAMING' },
             { name: '❌ None', value: 'NONE' }
           )
       )
@@ -200,11 +201,18 @@ const commands = {
         'PLAYING': ActivityType.Playing,
         'LISTENING': ActivityType.Listening,
         'WATCHING': ActivityType.Watching,
-        'COMPETING': ActivityType.Competing
+        'COMPETING': ActivityType.Competing,
+        'STREAMING': ActivityType.Streaming
       };
 
+      const activity = { name: text, type: activityTypes[type] };
+      // Streaming needs a URL for the purple badge
+      if (type === 'STREAMING' && client.config?.streamingUrl) {
+        activity.url = client.config.streamingUrl;
+      }
+
       client.user.setPresence({
-        activities: [{ name: text, type: activityTypes[type] }]
+        activities: [activity]
       });
 
       return interaction.reply({ content: `✅ Activity set to **${type}** ${text}`, ephemeral: true });
