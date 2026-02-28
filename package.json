@@ -19,7 +19,8 @@
     "chalk": "^4.1.2",
     "discord.js": "^14.19.2",
     "distube": "^5.2.3",
-    "dotenv": "^16.5.0"
+    "dotenv": "^16.5.0",
+    "sodium-native": "^4.3.1"
   },
   "keywords": [
     "discord",

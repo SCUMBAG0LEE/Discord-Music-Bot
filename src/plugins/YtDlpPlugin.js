@@ -413,7 +413,8 @@ class YtDlpPlugin extends ExtractorPlugin {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const info = await runYtdlp([
-          '-f', 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+          '-f', 'bestaudio',
+          '-S', '+aext:webm,abr',   // Prefer Opus/WebM, then sort by highest audio bitrate
           '-g',  // Get URL only
           '--no-playlist',
           `https://www.youtube.com/watch?v=${videoId}`
