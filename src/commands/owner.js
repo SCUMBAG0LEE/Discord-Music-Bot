@@ -260,9 +260,13 @@ const commands = {
         }
         // Force disconnect voice (queue.stop doesn't leave in v5)
         try {
-          const { getVoiceConnection } = require('@discordjs/voice');
-          const conn = getVoiceConnection(guildId);
-          if (conn) conn.destroy();
+          if (client.distube?.voices?.get(guildId)) {
+            client.distube.voices.leave(guildId);
+          } else {
+            const { getVoiceConnection } = require('@discordjs/voice');
+            const conn = getVoiceConnection(guildId);
+            if (conn) conn.destroy();
+          }
         } catch {}
       }
 

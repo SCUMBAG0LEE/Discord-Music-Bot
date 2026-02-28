@@ -103,28 +103,37 @@ function clearGuildTimeout(guildId) {
 
 /**
  * Force leave voice channel for a guild.
- * Destroys the voice connection directly — DisTube cleans up its queue
- * automatically when it detects the disconnect.
+ * Uses DisTube's voice manager first (it owns the connection), then falls back
+ * to @discordjs/voice direct API. MUST use destroy()/leave() — never
+ * guild.members.me.voice.disconnect() which triggers auto-reconnect.
  */
 function leaveVoiceChannel(guildId) {
   clearGuildTimeout(guildId);
 
-  // Disconnect via @discordjs/voice — MUST use connection.destroy().
-  // guild.members.me.voice.disconnect() only sends a voice state update,
-  // which @discordjs/voice treats as a temporary disconnect and auto-reconnects.
+  // Method 1: DisTube's voice manager (preferred — DisTube owns the connection)
+  try {
+    if (client.distube?.voices?.get(guildId)) {
+      client.distube.voices.leave(guildId);
+      logger.debug('Bot', `Left voice via DisTube voices.leave() for ${guildId}`);
+      return;
+    }
+  } catch (err) {
+    logger.debug('Bot', `DisTube voices.leave() failed for ${guildId}: ${err.message}`);
+  }
+
+  // Method 2: Fallback to @discordjs/voice direct API
   try {
     const { getVoiceConnection } = require('@discordjs/voice');
     const connection = getVoiceConnection(guildId);
     if (connection) {
       connection.destroy();
+      logger.debug('Bot', `Left voice via connection.destroy() for ${guildId}`);
       return;
     }
   } catch (err) {
     logger.debug('Bot', `Failed to get voice connection for ${guildId}: ${err.message}`);
   }
 
-  // If no @discordjs/voice connection found, the bot may already be disconnected
-  // or DisTube cleaned up the connection. Log for debugging.
   logger.debug('Bot', `No voice connection found for ${guildId} — may already be disconnected`);
 }
 

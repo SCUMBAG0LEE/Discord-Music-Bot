@@ -137,9 +137,13 @@ const commands = {
         await queue.stop();
         client.clearGuildTimeout?.(interaction.guildId);
         try {
-          const { getVoiceConnection } = require('@discordjs/voice');
-          const conn = getVoiceConnection(interaction.guildId);
-          if (conn) conn.destroy();
+          if (client.distube?.voices?.get(interaction.guildId)) {
+            client.distube.voices.leave(interaction.guildId);
+          } else {
+            const { getVoiceConnection } = require('@discordjs/voice');
+            const conn = getVoiceConnection(interaction.guildId);
+            if (conn) conn.destroy();
+          }
         } catch {}
         return interaction.reply(`⏹️ Skipped **${current.name}** - queue is now empty`);
       }
@@ -198,9 +202,13 @@ const commands = {
           await queue.stop();
           client.clearGuildTimeout?.(interaction.guildId);
           try {
-            const { getVoiceConnection } = require('@discordjs/voice');
-            const conn = getVoiceConnection(interaction.guildId);
-            if (conn) conn.destroy();
+            if (client.distube?.voices?.get(interaction.guildId)) {
+              client.distube.voices.leave(interaction.guildId);
+            } else {
+              const { getVoiceConnection } = require('@discordjs/voice');
+              const conn = getVoiceConnection(interaction.guildId);
+              if (conn) conn.destroy();
+            }
           } catch {}
           return interaction.reply(`⏹️ Vote passed! Skipped **${current.name}** - queue is now empty`);
         }
