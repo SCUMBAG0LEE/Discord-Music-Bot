@@ -133,6 +133,9 @@ function setupEvents(distube, client) {
       if (queue.votes) queue.votes.clear();
       if (queue.skipVotes) queue.skipVotes.clear();
       
+      // A song played successfully — allow auto-playlist to trigger again later
+      queue._autoPlaylistAttempted = false;
+      
       const nowPlayingMsg = `🎵 Now playing: **${song.name}** - \`${song.formattedDuration}\``;
       
       // Try to edit the original "Processing" message if it exists
