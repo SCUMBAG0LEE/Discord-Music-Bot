@@ -252,28 +252,35 @@ function setupEvents(distube, client) {
     .on(Events.FINISH, async queue => {
       logger.player(queue.id, 'Queue finished');
       
-      // Check for auto-playlist
+      // Check for auto-playlist (with loop guard)
       const settings = loadSettings(queue.id);
-      if (settings.autoPlaylist?.name && settings.autoPlaylist?.userId) {
+      if (settings.autoPlaylist?.name && settings.autoPlaylist?.userId && !queue._autoPlaylistAttempted) {
         const playlist = getPlaylist(settings.autoPlaylist.userId, settings.autoPlaylist.name);
         if (playlist?.songs?.length > 0) {
           logger.info('DisTube', `Auto-playing playlist: ${settings.autoPlaylist.name}`);
           queue.textChannel?.send(`📻 Auto-playing playlist: **${settings.autoPlaylist.name}**`);
           
-          // Play the first song and add the rest
-          try {
-            const songs = playlist.songs;
-            for (const song of songs) {
+          let loaded = 0;
+          for (const song of playlist.songs) {
+            try {
               await distube.play(queue.voiceChannel, song.url, {
                 textChannel: queue.textChannel,
                 member: queue.clientMember
               });
+              loaded++;
+            } catch (err) {
+              // Skip individual failures
             }
-            return; // Don't send "queue finished" message
-          } catch (err) {
-            logger.error('DisTube', 'Auto-playlist failed', err);
-            queue.textChannel?.send('❌ Failed to start auto-playlist: ' + err.message);
           }
+
+          if (loaded > 0) {
+            // Mark the NEW queue so it won't re-trigger auto-playlist if all songs error
+            const newQueue = distube.getQueue(queue.id);
+            if (newQueue) newQueue._autoPlaylistAttempted = true;
+            return; // Don't send "queue finished" message
+          }
+
+          queue.textChannel?.send('❌ Auto-playlist failed: no songs could be loaded.');
         }
       }
       
