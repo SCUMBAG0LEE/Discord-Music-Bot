@@ -103,27 +103,25 @@ const commands = {
             const { getVoiceConnection } = require('@discordjs/voice');
             const conn = getVoiceConnection(interaction.guildId);
             if (conn) conn.destroy();
-            else interaction.guild.members.me.voice.disconnect();
           } catch {}
           return interaction.reply('⏹️ Disconnected from voice channel.');
         }
         return interaction.reply({ content: 'There is no active queue.' });
       }
 
-      // Clear timeouts before stopping (stop triggers FINISH which may start new ones)
+      // Flag prevents the async FINISH handler from auto-playing / starting timers
+      queue._stopped = true;
       client.clearGuildTimeout?.(interaction.guildId);
       await queue.stop();
       client.clearGuildTimeout?.(interaction.guildId);
 
       // Force disconnect — queue.stop() clears the queue but does not leave voice
+      // MUST use connection.destroy() — guild.members.me.voice.disconnect() triggers
+      // @discordjs/voice auto-reconnect because it sees it as a temporary disconnect.
       try {
         const { getVoiceConnection } = require('@discordjs/voice');
         const connection = getVoiceConnection(interaction.guildId);
-        if (connection) {
-          connection.destroy();
-        } else if (interaction.guild?.members?.me?.voice?.channel) {
-          interaction.guild.members.me.voice.disconnect();
-        }
+        if (connection) connection.destroy();
       } catch {}
 
       return interaction.reply('⏹️ Playback stopped and queue cleared.');
@@ -189,6 +187,7 @@ const commands = {
         return interaction.reply('⏭️ Song skipped.');
       } catch (error) {
         // If skip fails (no more songs), stop and disconnect
+        queue._stopped = true;
         client.clearGuildTimeout?.(interaction.guildId);
         await queue.stop();
         client.clearGuildTimeout?.(interaction.guildId);
@@ -196,9 +195,6 @@ const commands = {
           const { getVoiceConnection } = require('@discordjs/voice');
           const conn = getVoiceConnection(interaction.guildId);
           if (conn) conn.destroy();
-          else if (interaction.guild?.members?.me?.voice?.channel) {
-            interaction.guild.members.me.voice.disconnect();
-          }
         } catch {}
         return interaction.reply('⏹️ Skipped - queue is now empty.');
       }

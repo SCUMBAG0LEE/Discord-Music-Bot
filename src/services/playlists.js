@@ -3,8 +3,9 @@ const fsSync = require('fs');
 const path = require('path');
 const { logger } = require('../utils/logger');
 
-// Directory for storing playlists
-const PLAYLISTS_DIR = path.join(process.cwd(), 'data', 'playlists');
+// Directory for storing playlists (use __dirname for reliability — process.cwd()
+// may differ when launched via PM2, systemd, or another working directory)
+const PLAYLISTS_DIR = path.join(__dirname, '../../data/playlists');
 
 /**
  * Ensure playlists directory exists
@@ -54,7 +55,7 @@ function getPlaylist(userId, name) {
  * @param {Object[]} songs - Array of song objects
  * @returns {Promise<{success: boolean, error: string|null}>}
  */
-async function savePlaylist(userId, name, songs) {
+async function savePlaylist(userId, name, songs, options = {}) {
   await ensureDirectory();
   
   if (!name || name.length > 32) {
@@ -73,7 +74,7 @@ async function savePlaylist(userId, name, songs) {
   const playlistData = {
     name,
     userId,
-    createdAt: new Date().toISOString(),
+    createdAt: options?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     songs: songs.map(song => ({
       title: song.title,
@@ -189,7 +190,7 @@ async function appendToPlaylist(userId, name, newSongs) {
     return { success: false, error: `Cannot exceed 200 songs. Current: ${playlist.songs.length}, Adding: ${newSongs.length}` };
   }
   
-  return savePlaylist(userId, name, combinedSongs);
+  return savePlaylist(userId, name, combinedSongs, { createdAt: playlist.createdAt });
 }
 
 module.exports = {

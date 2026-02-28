@@ -79,7 +79,8 @@ function initialize(client) {
     logger.warn('DisTube', 'Spotify credentials not configured - Spotify support disabled');
   }
 
-  // SoundCloud plugin - only for direct SoundCloud URLs, not for search
+  // SoundCloud plugin - kept as fallback (YtDlpPlugin handles SoundCloud with direct audio URLs,
+  // avoiding the HLS stream issues that cause premature close / SIGKILL)
   plugins.push(new SoundCloudPlugin());
 
   // Create DisTube instance with filter presets
@@ -96,7 +97,7 @@ function initialize(client) {
           reconnect: 1,
           reconnect_streamed: 1,
           reconnect_delay_max: 5,
-          headers: 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          headers: 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n'
         },
         output: {}
       },
@@ -254,6 +255,10 @@ function setupEvents(distube, client) {
     })
     .on(Events.FINISH, async queue => {
       logger.player(queue.id, 'Queue finished');
+      
+      // If manually stopped (via /stop, /skip end-of-queue, /shutdown, etc.), skip all logic.
+      // This prevents the async auto-playlist from racing with connection.destroy().
+      if (queue._stopped) return;
       
       // Check for auto-playlist (with loop guard)
       const settings = loadSettings(queue.id);

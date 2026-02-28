@@ -233,6 +233,16 @@ function isYouTubeURL(url) {
 }
 
 /**
+ * Check if URL is a SoundCloud URL
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isSoundCloudURL(url) {
+  if (typeof url !== 'string') return false;
+  return /^https?:\/\/(www\.|m\.)?soundcloud\.com\//i.test(url);
+}
+
+/**
  * Check if URL is a Bandcamp URL
  * @param {string} url
  * @returns {boolean}
@@ -277,6 +287,7 @@ function isDirectHTTPURL(url) {
  */
 function detectSource(url) {
   if (isYouTubeURL(url)) return 'youtube';
+  if (isSoundCloudURL(url)) return 'soundcloud';
   if (isBandcampURL(url)) return 'bandcamp';
   if (isVimeoURL(url)) return 'vimeo';
   if (/twitch\.tv/i.test(url)) return 'twitch';
@@ -330,10 +341,11 @@ class YtDlpPlugin extends ExtractorPlugin {
     if (typeof url !== 'string') return false;
     // Accept non-URL strings as search queries (e.g. from Spotify plugin)
     if (!isURL(url)) return true;
-    // Let dedicated plugins handle their own URLs
-    if (/soundcloud\.com|spotify\.com/i.test(url)) return false;
+    // Let Spotify plugin handle its own URLs
+    if (/spotify\.com/i.test(url)) return false;
     // Accept all other URLs — yt-dlp supports 1000+ extractors
-    // (YouTube, Bandcamp, Vimeo, Twitch, Dailymotion, direct HTTP, etc.)
+    // (YouTube, SoundCloud, Bandcamp, Vimeo, Twitch, Dailymotion, direct HTTP, etc.)
+    // SoundCloud is routed through yt-dlp for direct audio URLs (not HLS)
     return true;
   }
 
@@ -344,8 +356,12 @@ class YtDlpPlugin extends ExtractorPlugin {
       }
       return this.resolveVideo(url, options);
     }
+    // SoundCloud set/playlist URLs → resolve as playlist
+    if (isSoundCloudURL(url) && /\/sets\//i.test(url)) {
+      return this.resolveGenericPlaylist(url, 'soundcloud', options);
+    }
     // Any other URL — resolve via yt-dlp generically
-    // (Bandcamp, Vimeo, Twitch, Dailymotion, direct HTTP, etc.)
+    // (SoundCloud, Bandcamp, Vimeo, Twitch, Dailymotion, direct HTTP, etc.)
     if (isURL(url)) {
       return this.resolveGeneric(url, options);
     }
@@ -770,4 +786,4 @@ class YtDlpPlugin extends ExtractorPlugin {
   }
 }
 
-module.exports = { YtDlpPlugin, findYtdlp, isYouTubeURL, isBandcampURL, isVimeoURL, isDirectHTTPURL };
+module.exports = { YtDlpPlugin, findYtdlp, isYouTubeURL, isSoundCloudURL, isBandcampURL, isVimeoURL, isDirectHTTPURL };

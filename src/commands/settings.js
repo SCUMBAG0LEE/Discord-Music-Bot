@@ -132,6 +132,7 @@ const commands = {
         return interaction.reply(`⏭️ Force skipped **${current.name}**`);
       } catch (error) {
         // If skip fails (no more songs), stop and disconnect
+        queue._stopped = true;
         client.clearGuildTimeout?.(interaction.guildId);
         await queue.stop();
         client.clearGuildTimeout?.(interaction.guildId);
@@ -139,9 +140,6 @@ const commands = {
           const { getVoiceConnection } = require('@discordjs/voice');
           const conn = getVoiceConnection(interaction.guildId);
           if (conn) conn.destroy();
-          else if (interaction.guild?.members?.me?.voice?.channel) {
-            interaction.guild.members.me.voice.disconnect();
-          }
         } catch {}
         return interaction.reply(`⏹️ Skipped **${current.name}** - queue is now empty`);
       }
@@ -195,6 +193,7 @@ const commands = {
           await queue.skip();
           return interaction.reply(`⏭️ Vote passed! Skipped **${current.name}**`);
         } catch (error) {
+          queue._stopped = true;
           client.clearGuildTimeout?.(interaction.guildId);
           await queue.stop();
           client.clearGuildTimeout?.(interaction.guildId);
@@ -202,9 +201,6 @@ const commands = {
             const { getVoiceConnection } = require('@discordjs/voice');
             const conn = getVoiceConnection(interaction.guildId);
             if (conn) conn.destroy();
-            else if (interaction.guild?.members?.me?.voice?.channel) {
-              interaction.guild.members.me.voice.disconnect();
-            }
           } catch {}
           return interaction.reply(`⏹️ Vote passed! Skipped **${current.name}** - queue is now empty`);
         }

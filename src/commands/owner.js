@@ -251,7 +251,10 @@ const commands = {
       for (const guildId of guildIds) {
         try {
           const queue = client.distube.getQueue(guildId);
-          if (queue) await queue.stop();
+          if (queue) {
+            queue._stopped = true;
+            await queue.stop();
+          }
         } catch (e) {
           // Ignore errors during shutdown
         }
