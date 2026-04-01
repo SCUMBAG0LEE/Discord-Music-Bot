@@ -2,6 +2,7 @@
  * Permission checking utilities for DJ/Owner commands
  */
 
+const { PermissionFlagsBits } = require('discord.js');
 const { getEffectiveDJRole } = require('../services/serverSettings');
 
 /**
@@ -84,6 +85,46 @@ function getVoiceChannel(member) {
 }
 
 /**
+ * Validate that the bot can join/speak in the target voice channel.
+ * Returns null when everything looks valid, otherwise an actionable error string.
+ * @param {import('discord.js').Guild} guild
+ * @param {import('discord.js').VoiceBasedChannel} voiceChannel
+ * @returns {string|null}
+ */
+function getBotVoicePermissionIssue(guild, voiceChannel) {
+  const botMember = guild?.members?.me;
+  if (!botMember) {
+    return 'Could not resolve bot permissions in this server. Please try again.';
+  }
+
+  const perms = voiceChannel?.permissionsFor(botMember);
+  if (!perms) {
+    return `I cannot access ${voiceChannel}.`;
+  }
+
+  const missing = [];
+  if (!perms.has(PermissionFlagsBits.ViewChannel)) missing.push('View Channel');
+  if (!perms.has(PermissionFlagsBits.Connect)) missing.push('Connect');
+  if (!perms.has(PermissionFlagsBits.Speak)) missing.push('Speak');
+
+  if (missing.length > 0) {
+    return `Missing permissions in ${voiceChannel}: ${missing.join(', ')}`;
+  }
+
+  // If channel is full and bot is not already inside, joining may fail.
+  if (
+    voiceChannel.userLimit > 0
+    && voiceChannel.members.size >= voiceChannel.userLimit
+    && !voiceChannel.members.has(botMember.id)
+    && !perms.has(PermissionFlagsBits.MoveMembers)
+  ) {
+    return `${voiceChannel} is full. Free a slot or grant Move Members to the bot.`;
+  }
+
+  return null;
+}
+
+/**
  * Validate that interaction is in a guild
  * @param {import('discord.js').CommandInteraction} interaction
  * @returns {boolean}
@@ -120,6 +161,7 @@ module.exports = {
   isRequester,
   canUseDJCommands,
   getVoiceChannel,
+  getBotVoicePermissionIssue,
   isGuildInteraction,
   djOnlyError,
   ownerOnlyError

@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { isDJ, djOnlyError, isGuildInteraction } = require('../utils/permissions');
+const { isDJ, djOnlyError, getBotVoicePermissionIssue, isGuildInteraction } = require('../utils/permissions');
 const { loadSettings, setSetting, getEffectiveSkipRatio, canUseVoiceChannel } = require('../services/serverSettings');
 
 const commands = {
@@ -251,6 +251,11 @@ const commands = {
         });
       }
 
+      const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
+      if (voicePermissionIssue) {
+        return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
+      }
+
       await interaction.deferReply();
 
       const query = interaction.options.getString('query');
@@ -280,6 +285,14 @@ const commands = {
         
         return interaction.editReply(`⏩ Force playing: **${query.substring(0, 100)}**`);
       } catch (error) {
+        const isVoiceConnectFailure =
+          error?.code === 'VOICE_CONNECT_FAILED'
+          || /Cannot connect to the voice channel after 30 seconds/i.test(error?.message || '');
+        if (isVoiceConnectFailure) {
+          const guidance = getBotVoicePermissionIssue(interaction.guild, voiceChannel)
+            || 'Voice connect timed out. If permissions are correct, this is usually a host/network issue (blocked UDP/firewall/NAT).';
+          return interaction.editReply('❌ ' + guidance);
+        }
         return interaction.editReply(`❌ Error: ${error.message.slice(0, 200)}`);
       }
     }
@@ -314,6 +327,11 @@ const commands = {
         });
       }
 
+      const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
+      if (voicePermissionIssue) {
+        return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
+      }
+
       await interaction.deferReply();
 
       const query = interaction.options.getString('query');
@@ -343,6 +361,14 @@ const commands = {
         
         return interaction.editReply(`⏭️ Added to play next: **${query.substring(0, 100)}**`);
       } catch (error) {
+        const isVoiceConnectFailure =
+          error?.code === 'VOICE_CONNECT_FAILED'
+          || /Cannot connect to the voice channel after 30 seconds/i.test(error?.message || '');
+        if (isVoiceConnectFailure) {
+          const guidance = getBotVoicePermissionIssue(interaction.guild, voiceChannel)
+            || 'Voice connect timed out. If permissions are correct, this is usually a host/network issue (blocked UDP/firewall/NAT).';
+          return interaction.editReply('❌ ' + guidance);
+        }
         return interaction.editReply(`❌ Error: ${error.message.slice(0, 200)}`);
       }
     }

@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js');
-const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
+const { getVoiceChannel, getBotVoicePermissionIssue, isGuildInteraction } = require('../utils/permissions');
 const { truncate, formatDuration } = require('../utils/formatters');
 const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
 
@@ -39,6 +39,11 @@ module.exports = {
         content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
         ephemeral: true 
       });
+    }
+
+    const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
+    if (voicePermissionIssue) {
+      return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
     }
 
     await interaction.deferReply();
@@ -108,11 +113,19 @@ module.exports = {
         // Edit the deferred interaction
         await i.editReply({ content: '▶️ Playing: **' + selected.title + '**', components: [] });
       } catch (err) {
+        const isVoiceConnectFailure =
+          err?.code === 'VOICE_CONNECT_FAILED'
+          || /Cannot connect to the voice channel after 30 seconds/i.test(err?.message || '');
+        const message = isVoiceConnectFailure
+          ? '❌ ' + (getBotVoicePermissionIssue(interaction.guild, voiceChannel)
+            || 'Voice connect timed out. If permissions are correct, this is usually a host/network issue (blocked UDP/firewall/NAT).')
+          : '❌ Failed to play: ' + err.message;
+
         // If the interaction has already been responded to, use followUp instead
         try {
-          await i.editReply({ content: '❌ Failed to play: ' + err.message, components: [] });
+          await i.editReply({ content: message, components: [] });
         } catch {
-          await i.followUp({ content: '❌ Failed to play: ' + err.message, ephemeral: true }).catch(() => {});
+          await i.followUp({ content: message, ephemeral: true }).catch(() => {});
         }
       }
     });

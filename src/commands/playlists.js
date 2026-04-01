@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const playlistService = require('../services/playlists');
-const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
+const { getVoiceChannel, getBotVoicePermissionIssue, isGuildInteraction } = require('../utils/permissions');
 const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
 
 const commands = {
@@ -79,6 +79,11 @@ const commands = {
           content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
           ephemeral: true 
         });
+      }
+
+      const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
+      if (voicePermissionIssue) {
+        return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
       }
 
       await interaction.deferReply();

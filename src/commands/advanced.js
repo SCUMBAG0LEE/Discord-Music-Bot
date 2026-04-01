@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { isGuildInteraction, isDJ, getVoiceChannel } = require('../utils/permissions');
+const { isGuildInteraction, isDJ, getBotVoicePermissionIssue, getVoiceChannel } = require('../utils/permissions');
 const { formatDuration, parseTimestamp } = require('../utils/formatters');
 const distubeService = require('../services/distube');
 const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
@@ -227,6 +227,11 @@ const commands = {
         });
       }
 
+      const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
+      if (voicePermissionIssue) {
+        return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
+      }
+
       await interaction.deferReply();
 
       const presetUrl = distubeService.getRadioPreset(station);
@@ -241,6 +246,14 @@ const commands = {
         });
         return interaction.editReply('📻 Now playing **' + station + '** radio');
       } catch (err) {
+        const isVoiceConnectFailure =
+          err?.code === 'VOICE_CONNECT_FAILED'
+          || /Cannot connect to the voice channel after 30 seconds/i.test(err?.message || '');
+        if (isVoiceConnectFailure) {
+          const guidance = getBotVoicePermissionIssue(interaction.guild, voiceChannel)
+            || 'Voice connect timed out. If permissions are correct, this is usually a host/network issue (blocked UDP/firewall/NAT).';
+          return interaction.editReply('❌ ' + guidance);
+        }
         return interaction.editReply('❌ Failed to play radio: ' + err.message);
       }
     }

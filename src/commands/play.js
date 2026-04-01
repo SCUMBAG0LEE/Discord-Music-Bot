@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { getVoiceChannel, isGuildInteraction } = require('../utils/permissions');
+const { getVoiceChannel, getBotVoicePermissionIssue, isGuildInteraction } = require('../utils/permissions');
 const { logger } = require('../utils/logger');
 const distubeService = require('../services/distube');
 const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
@@ -31,6 +31,11 @@ module.exports = {
         content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
         ephemeral: true 
       });
+    }
+
+    const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
+    if (voicePermissionIssue) {
+      return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
     }
 
     await interaction.deferReply();
@@ -124,6 +129,19 @@ module.exports = {
 
     } catch (error) {
       logger.error('Play', 'Command failed for query: ' + query.substring(0, 50), error);
+
+      const isVoiceConnectFailure =
+        error?.code === 'VOICE_CONNECT_FAILED'
+        || /Cannot connect to the voice channel after 30 seconds/i.test(error?.message || '');
+
+      if (isVoiceConnectFailure) {
+        const issue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
+        const guidance = issue
+          ? issue
+          : 'Voice connect timed out. If permissions are correct, this is usually a host/network issue (blocked UDP/firewall/NAT).';
+        return interaction.editReply({ content: '❌ ' + guidance });
+      }
+
       return interaction.editReply({ content: '❌ Error: ' + error.message.slice(0, 200) });
     }
   }
