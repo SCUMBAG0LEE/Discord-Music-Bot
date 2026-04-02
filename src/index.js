@@ -3,6 +3,13 @@
  * DisTube + yt-dlp based music bot
  */
 
+// Force Node.js to use IPv4 for DNS resolution.
+// Fixes "Cannot connect to the voice channel after 30 seconds" (VOICE_CONNECT_FAILED) on dual-stack IPv4/IPv6 VPS hosts.
+const dns = require('node:dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType } = require('discord.js');
 const fs = require('fs');
@@ -355,7 +362,16 @@ process.on('unhandledRejection', error => logger.error('Process', 'Unhandled rej
 // Initialize and start
 async function start() {
   const pkg = require('../package.json');
+  const discordJsVersion = require('discord.js/package.json').version;
+  const voiceVersion = require('@discordjs/voice/package.json').version;
+  const distubeVersion = require('distube').version;
   logger.info('Bot', `🎵 Discord Music Bot v${pkg.version} (DisTube + yt-dlp) Starting...`);
+  logger.info('Bot', `Runtime: Node ${process.version} | discord.js ${discordJsVersion} | @discordjs/voice ${voiceVersion} | distube ${distubeVersion}`);
+
+  const [major, minor] = process.versions.node.split('.').map(n => parseInt(n, 10));
+  if (major < 22 || (major === 22 && minor < 12)) {
+    logger.warn('Bot', 'DisTube 5.2.3 is built/tested on newer Node runtimes. Voice join instability can occur on older Node versions.');
+  }
   
   // Load commands
   logger.info('Bot', 'Loading commands...');

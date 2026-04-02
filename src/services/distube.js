@@ -374,6 +374,9 @@ function setupEvents(distube, client) {
       logger.warn('DisTube', `No related songs found for autoplay in ${queue.id}`);
       queue.textChannel?.send('⚠️ Autoplay: No related songs found.');
     })
+    .on(Events.DEBUG, (debug) => {
+      logger.debug('DisTube', debug);
+    })
     .on(Events.FFMPEG_DEBUG, (debug) => {
       logger.debug('FFmpeg', debug);
     });

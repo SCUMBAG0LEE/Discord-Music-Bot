@@ -81,7 +81,7 @@ data/
 
 ### Prerequisites
 
-- **Node.js 18+** — Required for DisTube and discord.js v14
+- **Node.js 22.12+** — Required for current DisTube 5.2.x + discord.js voice stack
 - **FFmpeg** — Required for audio processing
 - **yt-dlp** — Required for YouTube playback
   ```bash
