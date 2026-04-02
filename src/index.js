@@ -30,6 +30,43 @@ function parseActivityType(type) {
   return types[type?.toUpperCase()] || ActivityType.Listening;
 }
 
+/**
+ * Safely resolve installed module version without relying on `<pkg>/package.json`
+ * subpath imports, which may be blocked by package exports.
+ * @param {string} moduleName
+ * @param {string} [fallback='unknown']
+ * @returns {string}
+ */
+function getModuleVersion(moduleName, fallback = 'unknown') {
+  try {
+    const mod = require(moduleName);
+    if (typeof mod?.version === 'string') {
+      return mod.version;
+    }
+  } catch {}
+
+  try {
+    const entryPath = require.resolve(moduleName);
+    let dir = path.dirname(entryPath);
+
+    for (let i = 0; i < 5; i++) {
+      const pkgPath = path.join(dir, 'package.json');
+      if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        if (typeof pkg.version === 'string') {
+          return pkg.version;
+        }
+      }
+
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {}
+
+  return fallback;
+}
+
 // Bot configuration from environment
 const config = {
   token: process.env.BOT_TOKEN,
@@ -362,9 +399,9 @@ process.on('unhandledRejection', error => logger.error('Process', 'Unhandled rej
 // Initialize and start
 async function start() {
   const pkg = require('../package.json');
-  const discordJsVersion = require('discord.js/package.json').version;
-  const voiceVersion = require('@discordjs/voice/package.json').version;
-  const distubeVersion = require('distube').version;
+  const discordJsVersion = getModuleVersion('discord.js');
+  const voiceVersion = getModuleVersion('@discordjs/voice');
+  const distubeVersion = getModuleVersion('distube');
   logger.info('Bot', `🎵 Discord Music Bot v${pkg.version} (DisTube + yt-dlp) Starting...`);
   logger.info('Bot', `Runtime: Node ${process.version} | discord.js ${discordJsVersion} | @discordjs/voice ${voiceVersion} | distube ${distubeVersion}`);
 
