@@ -3,13 +3,6 @@
  * DisTube + yt-dlp based music bot
  */
 
-// Force Node.js to use IPv4 for DNS resolution.
-// Fixes "Cannot connect to the voice channel after 30 seconds" (VOICE_CONNECT_FAILED) on dual-stack IPv4/IPv6 VPS hosts.
-const dns = require('node:dns');
-if (dns.setDefaultResultOrder) {
-  dns.setDefaultResultOrder('ipv4first');
-}
-
 require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType } = require('discord.js');
 const fs = require('fs');
