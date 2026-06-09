@@ -81,7 +81,7 @@ data/
 
 ### Prerequisites
 
-- **Node.js 22.12+** — Required for current DisTube 5.2.x + discord.js voice stack
+- **Bun** (latest version) - Required for current DisTube 5.2.x + discord.js voice stack
 - **FFmpeg** — Required for audio processing
 - **yt-dlp** — Required for YouTube playback
   ```bash
@@ -106,7 +106,7 @@ data/
 
 2. **Install dependencies**
    ```bash
-   npm install
+   bun install
    ```
 
 3. **Configure environment**
@@ -117,7 +117,7 @@ data/
 
 4. **Run the bot**
    ```bash
-   npm start
+   bun start
    ```
 
 ## ⚙️ Configuration
@@ -310,8 +310,8 @@ Use `/clearfilter` to remove all active filters.
 ## 🛠️ Development
 
 ```bash
-# Run with auto-reload (Node 18+)
-npm run dev
+# Run with auto-reload
+bun run dev
 ```
 
 ## 📜 Version History

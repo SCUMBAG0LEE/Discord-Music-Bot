@@ -144,3 +144,5 @@ dist
 
 # Other files to ignore
 package-lock.json
+bun.lock
+bun.lockb
