@@ -109,14 +109,15 @@ const commands = {
       const start = Date.now();
       await interaction.deferReply();
       const latency = Date.now() - start;
+      const wsPing = client.ws.ping;
       
       const embed = new EmbedBuilder()
         .setTitle('🏓 Pong!')
         .setColor('#00FF00')
         .addFields(
           { name: 'Bot Latency', value: `${latency}ms`, inline: true },
-          { name: 'WebSocket', value: `${client.ws.ping}ms`, inline: true },
-          { name: 'API', value: `${Date.now() - start}ms`, inline: true }
+          { name: 'Websocket Ping', value: wsPing === -1 ? 'Calculating...' : `${wsPing}ms`, inline: true },
+          { name: 'API Time', value: `${Date.now() - start}ms`, inline: true }
         );
       
       return interaction.editReply({ embeds: [embed] });
