@@ -192,7 +192,6 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/seek <timestamp>` | Jump to position (e.g., `1:30`, `90`) |
 | `/replay` | Restart current song |
 | `/previous` | Play the previous song |
-| `/filters <filter>` | Apply audio filters |
 
 ### ⏭️ Skipping
 | Command | Description |
@@ -239,7 +238,6 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/queuetype` | Set linear or fair queue mode |
 | `/skipratio <0.0-1.0>` | Set vote skip threshold |
 | `/maxduration <seconds>` | Set maximum song duration |
-| `/autoplaylist <name>` | Auto-play a playlist when queue ends |
 | `/songinstatus` | Show current song in bot status |
 | `/serversettings` | View all server settings |
 | `/forceremove` | Force remove songs from queue |
@@ -265,7 +263,6 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/eval <code>` | Evaluate JavaScript (⚠️ dangerous) |
 | `/servers` | List all servers the bot is in |
 | `/leaveserver <id>` | Leave a server |
-| `/refreshcommands` | Refresh slash commands |
 
 ## 📻 Radio Presets
 
@@ -285,25 +282,6 @@ Use `/radio <preset>` with these built-in stations:
 
 Or provide any direct stream URL: `/play https://stream.example.com/radio.mp3`
 
-## 🎛️ Audio Filters
-
-Use `/filters <filter>` to toggle audio effects:
-
-| Filter | Effect |
-|--------|--------|
-| `bassboost` | Enhanced bass |
-| `nightcore` | Sped up + higher pitch |
-| `vaporwave` | Slowed down + lower pitch |
-| `3d` | 3D spatial audio |
-| `tremolo` | Wavering volume effect |
-| `vibrato` | Wavering pitch effect |
-| `karaoke` | Remove vocals |
-| `treble` | Enhanced treble |
-| `subboost` | Enhanced sub-bass |
-| `phaser` | Phaser sweep effect |
-
-Additional filters available via `/filter`: `reverse`, `normalizer`, `surrounding`, `pulsator`, `flanger`, `gate`, `haas`, `mcompand`, `earwax`.
-Use `/clearfilter` to remove all active filters.
 
 ## 🛠️ Development
 
@@ -314,6 +292,7 @@ bun run dev
 
 ## 📜 Version History
 
+- **v5.2.0** — Inactivity warnings & voice validation: Created global voice channel connection validator, protected all commands against outside interference, added empty voice channel disconnect messages, idle queue timeout alerts, and fixed voteskip listener count bug
 - **v5.1.0** — Audio quality & reliability: sodium-native for Opus encryption, SoundCloud routed through yt-dlp (fixed premature stream close), disconnect/reconnect race condition fix, auto-playlist infinite loop guard, song-in-status with Streaming badge, FFmpeg reconnect & CRLF headers, Dailymotion support, 5 full code audits with 20+ bug fixes
 - **v5.0.0** — Major refactor: Added server settings, admin commands, lyrics, DJ role per-server, fair queue, vote skip ratio, max duration, and more
 - **v4.3.0** — Switched to yt-dlp for reliable YouTube playback
