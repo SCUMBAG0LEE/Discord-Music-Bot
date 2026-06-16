@@ -13,19 +13,27 @@ import { promisify } from 'util';
 import { getYtDlpArgs } from '../utils/cookies.js';
 import { loadSettings } from './serverSettings.js';
 import { logger } from '../utils/logger.js';
+import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 
 // Configure FFmpeg resolution
 try {
     const customFfmpeg = process.env.FFMPEG_PATH;
-    const info = prism.FFmpeg.getInfo();
+    const FFmpegClass = prism.default?.FFmpeg || prism.FFmpeg;
+    const info = FFmpegClass.getInfo();
     
     if (customFfmpeg) {
         const customResult = spawnSync(customFfmpeg, ['-version'], { windowsHide: true });
         if (!customResult.error && customResult.stdout) {
-            info.command = customFfmpeg;
-            info.output = customResult.stdout.toString();
-            const match = /version\s+([^\s]+)/.exec(info.output) || /version ([^\s]+) Copyright/.exec(info.output);
-            info.version = match ? match[1] : 'unknown';
+            const output = customResult.stdout.toString();
+            const match = /version\s+([^\s]+)/.exec(output) || /version ([^\s]+) Copyright/.exec(output);
+            const version = match ? match[1] : 'unknown';
+            
+            FFmpegClass.getInfo = () => ({
+                command: customFfmpeg,
+                output,
+                version
+            });
             logger.info('FFmpeg', `Using custom FFmpeg from env: ${customFfmpeg}`);
         } else {
             logger.warn('FFmpeg', `Custom FFmpeg path (${customFfmpeg}) is invalid, falling back...`);
@@ -38,16 +46,21 @@ try {
             logger.info('FFmpeg', 'System FFmpeg not found, falling back to ffmpeg-static.');
             logger.debug('FFmpeg', `Using path: ${info.command}`);
         } else {
-            info.command = 'ffmpeg';
-            info.output = result.stdout.toString();
-            const match = /version\s+([^\s]+)/.exec(info.output) || /version ([^\s]+) Copyright/.exec(info.output);
-            info.version = match ? match[1] : 'unknown';
+            const output = result.stdout.toString();
+            const match = /version\s+([^\s]+)/.exec(output) || /version ([^\s]+) Copyright/.exec(output);
+            const version = match ? match[1] : 'unknown';
+            
+            FFmpegClass.getInfo = () => ({
+                command: 'ffmpeg',
+                output,
+                version
+            });
             logger.info('FFmpeg', 'System FFmpeg found! Using it directly instead of ffmpeg-static.');
             logger.debug('FFmpeg', 'System FFmpeg generally provides better performance and streaming capabilities.');
         }
     }
 } catch (e) {
-    logger.error('FFmpeg', 'Error configuring FFmpeg path, using fallback.');
+    logger.error('FFmpeg', 'Error configuring FFmpeg path, using fallback.', e);
 }
 
 const execFileAsync = promisify(execFile);
@@ -1005,6 +1018,37 @@ export class MusicManager {
         }
     }
 
+    async prefetchNextTrack(guildId, nextSong) {
+        if (!nextSong || nextSong.sourceType === 'radio' || nextSong.isRadio || nextSong.prefetchFilePath || nextSong.isPrefetching) {
+            return;
+        }
+        
+        nextSong.isPrefetching = true;
+        const os = require('os');
+        const path = require('path');
+        const tempFilePath = path.join(os.tmpdir(), `discord_music_prefetch_${guildId}_${Date.now()}.audio`);
+        
+        try {
+            const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+            const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio', '-o', '-', '--no-warnings', nextSong.originalUrl]);
+            const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
+            
+            // Large 8MB buffer for HDD sequential write optimization (minimizes HDD head thrashing)
+            const fileStream = fs.createWriteStream(tempFilePath, { highWaterMark: 1024 * 1024 * 8 });
+            ytdlpChildProcess.stdout.pipe(fileStream);
+            
+            nextSong.prefetchFilePath = tempFilePath;
+            nextSong.prefetchProcess = ytdlpChildProcess;
+            
+            ytdlpChildProcess.on('close', () => {
+                nextSong.isPrefetching = false;
+            });
+        } catch (e) {
+            nextSong.isPrefetching = false;
+            logger.error('Prefetch', 'Failed to prefetch next track', e);
+        }
+    }
+
     async playNext(guildId) {
         const queue = this.getQueue(guildId);
         if (!queue) return;
@@ -1027,6 +1071,7 @@ export class MusicManager {
 
             let ffmpegArgs = [];
             let inputSource = null;
+            let tempFilePath = null;
 
             // Cleanup previous processes and temp files early to save memory
             if (queue.ytdlpProcess) {
@@ -1034,58 +1079,48 @@ export class MusicManager {
                 if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();
                 queue.ytdlpProcess = null;
             }
-            if (queue.ytdlpChildProcess) {
+            if (queue.ytdlpChildProcess && queue.ytdlpChildProcess !== song.prefetchProcess) {
                 queue.ytdlpChildProcess.kill();
                 queue.ytdlpChildProcess = null;
             }
-            if (queue.tempFilePath) {
-                try {
-                    const fs = require('fs');
-                    if (fs.existsSync(queue.tempFilePath)) fs.unlinkSync(queue.tempFilePath);
-                } catch (e) {
-                    logger.debug('Cleanup', `Failed to delete temp file ${queue.tempFilePath}`);
-                }
+            if (queue.tempFilePath && queue.tempFilePath !== song.prefetchFilePath) {
+                fsPromises.unlink(queue.tempFilePath).catch(() => {});
                 queue.tempFilePath = null;
             }
 
             if (!isDirectRadioStream) {
                 // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
-                // Instead of piping yt-dlp to FFmpeg live (which causes network stutter and relies on unreliable stream URLs),
-                // we spawn yt-dlp to download the audio at max speed into a high-watermark memory buffer AND a local /tmp file.
-                // We then start playing from the buffer after a small delay (simulating 10% buffering), avoiding premature EOF bugs.
-                
-                const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-                const { PassThrough } = require('stream');
                 const os = require('os');
                 const path = require('path');
-                const fs = require('fs');
+                
+                if (song.prefetchFilePath) {
+                    // Use the already background-prefetched file (HDD read optimization)
+                    logger.info('Prefetch', `Using prefetched audio file for: ${song.title}`);
+                    tempFilePath = song.prefetchFilePath;
+                    queue.tempFilePath = tempFilePath;
+                    queue.ytdlpChildProcess = song.prefetchProcess || null;
+                } else {
+                    const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+                    tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
+                    queue.tempFilePath = tempFilePath;
+                    
+                    const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio', '-o', '-', '--no-warnings', song.originalUrl]);
+                    const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
+                    queue.ytdlpChildProcess = ytdlpChildProcess;
+                    
+                    // Large 8MB buffer for HDD sequential write optimization to prevent disk thrashing
+                    const fileStream = fs.createWriteStream(tempFilePath, { highWaterMark: 1024 * 1024 * 8 });
+                    ytdlpChildProcess.stdout.pipe(fileStream);
+                    
+                    // Wait for the download to buffer a bit
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
 
-                const tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
-                queue.tempFilePath = tempFilePath;
-                
-                // Massive 50MB memory buffer (increase memory highwatermark)
-                const bufferStream = new PassThrough({ highWaterMark: 1024 * 1024 * 50 });
-                
-                const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio', '-o', '-', '--no-warnings', song.originalUrl]);
-                const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
-                queue.ytdlpChildProcess = ytdlpChildProcess;
-                
-                ytdlpChildProcess.stdout.pipe(bufferStream);
-                
-                // Also write to local hard drive /tmp/ directory as requested
-                const fileStream = fs.createWriteStream(tempFilePath);
-                bufferStream.pipe(fileStream);
-                
-                // Wait for the download to hit "10%" (simulate by giving it 2 seconds of max-speed download time)
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                inputSource = bufferStream;
-                
                 // Optimized FFmpeg pipeline for native hardware-aligned instructions (Stereo, 48000Hz PCM/Opus)
                 ffmpegArgs = [
                     '-hide_banner',
                     '-threads', '0', // Allow FFmpeg to optimize thread count for CPU (e.g., ProLiant)
-                    '-i', 'pipe:0',  // Read from our high-watermark memory buffer
+                    '-i', tempFilePath, // Read from our temp file
                     '-analyzeduration', '0',
                     '-loglevel', 'warning',
                     '-vn',           // Drop video tracks completely
@@ -1093,7 +1128,7 @@ export class MusicManager {
                     '-ar', '48000',
                     '-ac', '2',
                     // Use high-quality soxr resampler to minimize CPU overhead on mismatching sample rates
-                    '-af', 'aresample=resampler=soxr:precision=high'
+                    '-af', 'aresample=resampler=soxr:precision=28'
                 ];
             } else {
                 // Direct radio streams cannot be prefetched to EOF (they are infinite)
@@ -1109,7 +1144,7 @@ export class MusicManager {
                     '-ar', '48000',
                     '-ac', '2',
                     // Retain native hardware alignment optimizations for radio streams too
-                    '-af', 'aresample=resampler=soxr:precision=high'
+                    '-af', 'aresample=resampler=soxr:precision=28'
                 ];
             }
 
@@ -1155,6 +1190,12 @@ export class MusicManager {
                 });
             }
             this.updateStatus(song.title);
+            
+            // HDD Optimization: Background prefetch the next track in the queue to a separate temp file
+            // This prevents playback gap and uses the 350Mbps bandwidth effectively without thrashing the HDD
+            if (queue.songs.length > 1) {
+                this.prefetchNextTrack(guildId, queue.songs[1]);
+            }
         } catch (error) {
             console.error(`Failed to play ${song.title}:`, error);
             
@@ -1397,10 +1438,13 @@ export class MusicManager {
                 }
                 if (queue.ytdlpChildProcess) queue.ytdlpChildProcess.kill();
                 if (queue.tempFilePath) {
-                    try {
-                        const fs = require('fs');
-                        if (fs.existsSync(queue.tempFilePath)) fs.unlinkSync(queue.tempFilePath);
-                    } catch (e) {}
+                    fsPromises.unlink(queue.tempFilePath).catch(() => {});
+                }
+                if (queue.songs) {
+                    for (const s of queue.songs) {
+                        if (s.prefetchProcess) s.prefetchProcess.kill();
+                        if (s.prefetchFilePath) fsPromises.unlink(s.prefetchFilePath).catch(() => {});
+                    }
                 }
             } catch (e) {}
             this.queues.delete(guildId);
@@ -1415,10 +1459,23 @@ export const musicManager = new MusicManager();
 
 // Graceful shutdown hooks
 const cleanup = () => {
-    console.log('Cleaning up voice connections...');
+    logger.info('System', 'Cleaning up active music engine allocations...');
     for (const [guildId, queue] of musicManager.queues.entries()) {
         try {
             if (queue.connection) queue.connection.destroy();
+            if (queue.ytdlpChildProcess) queue.ytdlpChildProcess.kill();
+            if (queue.ytdlpProcess?.process) queue.ytdlpProcess.process.kill();
+            if (queue.tempFilePath && fs.existsSync(queue.tempFilePath)) {
+                fs.unlinkSync(queue.tempFilePath);
+            }
+            if (queue.songs) {
+                for (const s of queue.songs) {
+                    if (s.prefetchProcess) s.prefetchProcess.kill();
+                    if (s.prefetchFilePath && fs.existsSync(s.prefetchFilePath)) {
+                        fs.unlinkSync(s.prefetchFilePath);
+                    }
+                }
+            }
         } catch (e) {}
     }
     process.exit(0);

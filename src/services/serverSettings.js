@@ -94,10 +94,12 @@ export function setSetting(guildId, key, value) {
  * Reset settings to defaults
  * @param {string} guildId
  */
-export function resetSettings(guildId) {
+export async function resetSettings(guildId) {
   const filePath = getSettingsPath(guildId);
   if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (e) {}
   }
 }
 
