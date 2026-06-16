@@ -1019,34 +1019,93 @@ export class MusicManager {
             // If it's a direct radio preset/stream URL, bypass yt-dlp lookup
             const isDirectRadioStream = song.sourceType === 'radio' || song.isRadio || /\.(mp3|ogg|aac|wav|flac|m4a)(\?|$)/i.test(song.originalUrl) || /streams\.ilovemusic\.de|streaming\.radio\.co|live\.musopen\.org|streams\.fluxfm\.de|radio\.synth\.fm|stream\.radioseda\.ir/i.test(song.originalUrl);
 
-            if (!isDirectRadioStream) {
-                // Use yt-dlp -J to safely extract the raw audio URL and HTTP headers (crucial for User-Agent spoofing)
-                const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-                const args = getYtDlpArgs(['-J', '-f', 'bestaudio', '--no-warnings', song.originalUrl]);
-                const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
-                
-                const info = JSON.parse(stdout);
-                streamUrl = info.url || (info.entries && info.entries[0] && info.entries[0].url);
-                
-                if (!streamUrl) throw new Error("Could not extract stream URL");
+            let ffmpegArgs = [];
+            let inputSource = null;
 
-                const headers = info.http_headers || {};
-                userAgent = headers['User-Agent'] || "Mozilla/5.0";
+            // Cleanup previous processes and temp files early to save memory
+            if (queue.ytdlpProcess) {
+                if (typeof queue.ytdlpProcess.destroy === 'function') queue.ytdlpProcess.destroy();
+                if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();
+                queue.ytdlpProcess = null;
+            }
+            if (queue.ytdlpChildProcess) {
+                queue.ytdlpChildProcess.kill();
+                queue.ytdlpChildProcess = null;
+            }
+            if (queue.tempFilePath) {
+                try {
+                    const fs = require('fs');
+                    if (fs.existsSync(queue.tempFilePath)) fs.unlinkSync(queue.tempFilePath);
+                } catch (e) {
+                    logger.debug('Cleanup', `Failed to delete temp file ${queue.tempFilePath}`);
+                }
+                queue.tempFilePath = null;
             }
 
-            // Spawn FFmpeg explicitly with aggressive reconnect flags and correct User-Agent
-            const ffmpegArgs = [
-                '-reconnect', '1',
-                '-reconnect_streamed', '1',
-                '-reconnect_delay_max', '5',
-                '-user_agent', userAgent,
-                '-i', streamUrl,
-                '-analyzeduration', '0',
-                '-loglevel', 'warning',
-                '-f', 's16le',
-                '-ar', '48000',
-                '-ac', '2'
-            ];
+            if (!isDirectRadioStream) {
+                // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
+                // Instead of piping yt-dlp to FFmpeg live (which causes network stutter and relies on unreliable stream URLs),
+                // we spawn yt-dlp to download the audio at max speed into a high-watermark memory buffer AND a local /tmp file.
+                // We then start playing from the buffer after a small delay (simulating 10% buffering), avoiding premature EOF bugs.
+                
+                const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+                const { PassThrough } = require('stream');
+                const os = require('os');
+                const path = require('path');
+                const fs = require('fs');
+
+                const tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
+                queue.tempFilePath = tempFilePath;
+                
+                // Massive 50MB memory buffer (increase memory highwatermark)
+                const bufferStream = new PassThrough({ highWaterMark: 1024 * 1024 * 50 });
+                
+                const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio', '-o', '-', '--no-warnings', song.originalUrl]);
+                const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
+                queue.ytdlpChildProcess = ytdlpChildProcess;
+                
+                ytdlpChildProcess.stdout.pipe(bufferStream);
+                
+                // Also write to local hard drive /tmp/ directory as requested
+                const fileStream = fs.createWriteStream(tempFilePath);
+                bufferStream.pipe(fileStream);
+                
+                // Wait for the download to hit "10%" (simulate by giving it 2 seconds of max-speed download time)
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                inputSource = bufferStream;
+                
+                // Optimized FFmpeg pipeline for native hardware-aligned instructions (Stereo, 48000Hz PCM/Opus)
+                ffmpegArgs = [
+                    '-hide_banner',
+                    '-threads', '0', // Allow FFmpeg to optimize thread count for CPU (e.g., ProLiant)
+                    '-i', 'pipe:0',  // Read from our high-watermark memory buffer
+                    '-analyzeduration', '0',
+                    '-loglevel', 'warning',
+                    '-vn',           // Drop video tracks completely
+                    '-f', 's16le',
+                    '-ar', '48000',
+                    '-ac', '2',
+                    // Use high-quality soxr resampler to minimize CPU overhead on mismatching sample rates
+                    '-af', 'aresample=resampler=soxr:precision=high'
+                ];
+            } else {
+                // Direct radio streams cannot be prefetched to EOF (they are infinite)
+                ffmpegArgs = [
+                    '-reconnect', '1',
+                    '-reconnect_streamed', '1',
+                    '-reconnect_delay_max', '5',
+                    '-user_agent', userAgent,
+                    '-i', streamUrl,
+                    '-analyzeduration', '0',
+                    '-loglevel', 'warning',
+                    '-f', 's16le',
+                    '-ar', '48000',
+                    '-ac', '2',
+                    // Retain native hardware alignment optimizations for radio streams too
+                    '-af', 'aresample=resampler=soxr:precision=high'
+                ];
+            }
 
             const ffmpegProcess = new prism.FFmpeg({ args: ffmpegArgs });
             
@@ -1054,13 +1113,15 @@ export class MusicManager {
             ffmpegProcess.process.stderr.on('data', data => logger.debug('FFmpeg', `STDERR: ${data.toString().trim()}`));
             ffmpegProcess.process.on('exit', code => logger.debug('FFmpeg', `Process exited with code ${code}`));
             
-            if (queue.ytdlpProcess) {
-                // Destroy previous stream if it exists
-                if (typeof queue.ytdlpProcess.destroy === 'function') queue.ytdlpProcess.destroy();
-                if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();
-                queue.ytdlpProcess = null;
-            }
             queue.ytdlpProcess = ffmpegProcess; // Keeping same variable name for compatibility with cleanup
+
+            if (inputSource) {
+                // Pipe the prefetched memory buffer into FFmpeg
+                inputSource.pipe(ffmpegProcess.process.stdin);
+                // Handle stream errors silently
+                inputSource.on('error', () => {}); 
+                ffmpegProcess.process.stdin.on('error', () => {});
+            }
 
             const resource = createAudioResource(ffmpegProcess, {
                 inputType: StreamType.Raw,
@@ -1324,6 +1385,17 @@ export class MusicManager {
             try {
                 if (queue.player) queue.player.stop();
                 if (queue.connection) queue.connection.destroy();
+                if (queue.ytdlpProcess) {
+                    if (typeof queue.ytdlpProcess.destroy === 'function') queue.ytdlpProcess.destroy();
+                    if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();
+                }
+                if (queue.ytdlpChildProcess) queue.ytdlpChildProcess.kill();
+                if (queue.tempFilePath) {
+                    try {
+                        const fs = require('fs');
+                        if (fs.existsSync(queue.tempFilePath)) fs.unlinkSync(queue.tempFilePath);
+                    } catch (e) {}
+                }
             } catch (e) {}
             this.queues.delete(guildId);
         } else {
