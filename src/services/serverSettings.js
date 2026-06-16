@@ -3,10 +3,10 @@
  * Manages per-server configuration (text/voice lock, queue type, skip ratio, etc.)
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-const SETTINGS_DIR = path.join(__dirname, '../../data/servers');
+const SETTINGS_DIR = path.join(process.cwd(), 'data/servers');
 
 // Ensure directory exists
 if (!fs.existsSync(SETTINGS_DIR)) {
@@ -14,7 +14,7 @@ if (!fs.existsSync(SETTINGS_DIR)) {
 }
 
 // Default server settings
-const defaultSettings = {
+export const defaultSettings = {
   textChannelId: null,     // Lock to specific text channel (null = any)
   voiceChannelId: null,    // Lock to specific voice channel (null = any)
   queueType: 'linear',     // 'linear' or 'fair' (fair = round-robin between users)
@@ -42,7 +42,7 @@ function getSettingsPath(guildId) {
  * @param {string} guildId
  * @returns {object}
  */
-function loadSettings(guildId) {
+export function loadSettings(guildId) {
   const filePath = getSettingsPath(guildId);
   if (!fs.existsSync(filePath)) {
     return { ...defaultSettings };
@@ -60,7 +60,7 @@ function loadSettings(guildId) {
  * @param {string} guildId
  * @param {object} settings
  */
-function saveSettings(guildId, settings) {
+export function saveSettings(guildId, settings) {
   const filePath = getSettingsPath(guildId);
   fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
 }
@@ -71,7 +71,7 @@ function saveSettings(guildId, settings) {
  * @param {string} key
  * @returns {any}
  */
-function getSetting(guildId, key) {
+export function getSetting(guildId, key) {
   const settings = loadSettings(guildId);
   return settings[key];
 }
@@ -83,7 +83,7 @@ function getSetting(guildId, key) {
  * @param {any} value
  * @returns {object} Updated settings
  */
-function setSetting(guildId, key, value) {
+export function setSetting(guildId, key, value) {
   const settings = loadSettings(guildId);
   settings[key] = value;
   saveSettings(guildId, settings);
@@ -94,7 +94,7 @@ function setSetting(guildId, key, value) {
  * Reset settings to defaults
  * @param {string} guildId
  */
-function resetSettings(guildId) {
+export function resetSettings(guildId) {
   const filePath = getSettingsPath(guildId);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
@@ -107,7 +107,7 @@ function resetSettings(guildId) {
  * @param {string} channelId
  * @returns {boolean}
  */
-function canUseTextChannel(guildId, channelId) {
+export function canUseTextChannel(guildId, channelId) {
   const settings = loadSettings(guildId);
   if (!settings.textChannelId) return true; // Not locked
   return settings.textChannelId === channelId;
@@ -119,7 +119,7 @@ function canUseTextChannel(guildId, channelId) {
  * @param {string} channelId
  * @returns {boolean}
  */
-function canUseVoiceChannel(guildId, channelId) {
+export function canUseVoiceChannel(guildId, channelId) {
   const settings = loadSettings(guildId);
   if (!settings.voiceChannelId) return true; // Not locked
   return settings.voiceChannelId === channelId;
@@ -131,7 +131,7 @@ function canUseVoiceChannel(guildId, channelId) {
  * @param {number} globalRatio
  * @returns {number}
  */
-function getEffectiveSkipRatio(guildId, globalRatio) {
+export function getEffectiveSkipRatio(guildId, globalRatio) {
   const settings = loadSettings(guildId);
   return settings.skipRatio ?? globalRatio;
 }
@@ -142,7 +142,7 @@ function getEffectiveSkipRatio(guildId, globalRatio) {
  * @param {number} globalVolume
  * @returns {number}
  */
-function getEffectiveVolume(guildId, globalVolume) {
+export function getEffectiveVolume(guildId, globalVolume) {
   const settings = loadSettings(guildId);
   return settings.defaultVolume ?? globalVolume;
 }
@@ -153,21 +153,7 @@ function getEffectiveVolume(guildId, globalVolume) {
  * @param {string} globalDJRole
  * @returns {string|null}
  */
-function getEffectiveDJRole(guildId, globalDJRole) {
+export function getEffectiveDJRole(guildId, globalDJRole) {
   const settings = loadSettings(guildId);
   return settings.djRoleId ?? globalDJRole;
 }
-
-module.exports = {
-  defaultSettings,
-  loadSettings,
-  saveSettings,
-  getSetting,
-  setSetting,
-  resetSettings,
-  canUseTextChannel,
-  canUseVoiceChannel,
-  getEffectiveSkipRatio,
-  getEffectiveVolume,
-  getEffectiveDJRole
-};

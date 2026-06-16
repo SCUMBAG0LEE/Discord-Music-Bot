@@ -1,140 +1,86 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ComponentType } = require('discord.js');
-const { getVoiceChannel, getBotVoicePermissionIssue, isGuildInteraction } = require('../utils/permissions');
-const { truncate, formatDuration } = require('../utils/formatters');
-const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
+import { Command, Declare, Options, createStringOption, Embed, ActionRow, StringSelectMenu, StringSelectOption } from 'seyfert';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { getYtDlpArgs } from '../utils/cookies.js';
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('search')
-    .setDescription('Search YouTube or SoundCloud and choose a track interactively.')
-    .addStringOption(option =>
-      option.setName('query')
-        .setDescription('Search term')
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option.setName('platform')
-        .setDescription('Which platform to search (default: YouTube)')
-        .setRequired(false)
-        .addChoices(
-          { name: 'YouTube', value: 'youtube' },
-          { name: 'SoundCloud', value: 'soundcloud' }
-        )
-    ),
+const execFileAsync = promisify(execFile);
 
-  async execute(interaction, client) {
-    if (!isGuildInteraction(interaction)) {
-      return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-    }
-
-    const voiceChannel = getVoiceChannel(interaction.member);
-    if (!voiceChannel) {
-      return interaction.reply({ content: 'You must join a voice channel first!', ephemeral: true });
-    }
-
-    // Check voice channel lock
-    if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
-      const settings = loadSettings(interaction.guildId);
-      return interaction.reply({ 
-        content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
-        ephemeral: true 
-      });
-    }
-
-    const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
-    if (voicePermissionIssue) {
-      return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
-    }
-
-    await interaction.deferReply();
-
-    const query = interaction.options.getString('query');
-    const platform = interaction.options.getString('platform') || 'youtube';
-    
-    // Use yt-dlp plugin for search
-    let results;
-    try {
-      // Get the yt-dlp plugin stored on distube instance
-      const ytdlpPlugin = client.distube.ytdlpPlugin;
-      if (!ytdlpPlugin) {
-        return interaction.editReply({ content: '❌ Search functionality not available (yt-dlp plugin not found)' });
-      }
-      
-      results = platform === 'soundcloud'
-        ? await ytdlpPlugin.searchSoundCloud(query, 10)
-        : await ytdlpPlugin.search(query, 10);
-    } catch (err) {
-      return interaction.editReply({ content: '❌ Search failed: ' + err.message });
-    }
-
-    if (!results || !results.length) {
-      return interaction.editReply({ content: '🔍 No results found.' });
-    }
-
-    const platformLabel = platform === 'soundcloud' ? '🟠 SoundCloud' : '🔴 YouTube';
-
-    const options = results.slice(0, 10).map((video, index) => ({
-      label: truncate(video.title || 'Unknown', 100),
-      description: truncate(`${video.channel || 'Unknown'} • ${video.durationFormatted || formatDuration(video.duration)}`, 100),
-      value: index.toString(),
-    }));
-
-    const row = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('search_select')
-        .setPlaceholder('Select a track')
-        .addOptions(options)
-    );
-
-    await interaction.editReply({ content: `${platformLabel} — Select a track from the list below:`, components: [row] });
-
-    const message = await interaction.fetchReply();
-    const collector = message.createMessageComponentCollector({
-      componentType: ComponentType.StringSelect,
-      time: 30000,
-    });
-
-    collector.on('collect', async i => {
-      if (i.user.id !== interaction.user.id) {
-        return i.reply({ content: 'This is not your selection!', ephemeral: true });
-      }
-
-      const selected = results[parseInt(i.values[0])];
-      
-      try {
-        // Defer the update first to avoid token expiration
-        await i.deferUpdate();
-        
-        await client.distube.play(voiceChannel, selected.url, {
-          textChannel: interaction.channel,
-          member: interaction.member
-        });
-        
-        // Edit the deferred interaction
-        await i.editReply({ content: '▶️ Playing: **' + selected.title + '**', components: [] });
-      } catch (err) {
-        const isVoiceConnectFailure =
-          err?.code === 'VOICE_CONNECT_FAILED'
-          || /Cannot connect to the voice channel after 30 seconds/i.test(err?.message || '');
-        const message = isVoiceConnectFailure
-          ? '❌ ' + (getBotVoicePermissionIssue(interaction.guild, voiceChannel)
-            || 'Voice connect timed out. If permissions are correct, this is usually a host/network issue (blocked UDP/firewall/NAT).')
-          : '❌ Failed to play: ' + err.message;
-
-        // If the interaction has already been responded to, use followUp instead
-        try {
-          await i.editReply({ content: message, components: [] });
-        } catch {
-          await i.followUp({ content: message, ephemeral: true }).catch(() => {});
-        }
-      }
-    });
-
-    collector.on('end', async (collected, reason) => {
-      // Only show timeout message if no selection was made and it timed out
-      if (collected.size === 0 && reason === 'time') {
-        await interaction.editReply({ content: '⏱️ No selection made, please try again.', components: [] }).catch(() => {});
-      }
-    });
-  }
+const searchOptions = {
+    query: createStringOption({
+        description: 'What do you want to search for?',
+        required: true
+    })
 };
+
+@Declare({
+    name: 'search',
+    description: 'Search for a song and pick from 10 results'
+})
+@Options(searchOptions)
+export default class SearchCommand extends Command {
+    async run(ctx) {
+        const query = ctx.options.query;
+        await ctx.write({ content: '🔍 Searching...' });
+        
+        try {
+            const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+            
+            // Use --flat-playlist so yt-dlp only fetches basic metadata (instantly) instead of the entire formats array
+            const args = getYtDlpArgs(['-j', '--flat-playlist', '--no-warnings', `ytsearch10:${query}`]);
+            
+            // Search 10 results and output JSON with increased maxBuffer
+            const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
+            
+            // yt-dlp outputs one JSON object per line for multiple results
+            const lines = stdout.trim().split('\n');
+            if (lines.length === 0 || !lines[0]) {
+                return ctx.editOrReply({ content: '❌ No results found.' });
+            }
+            
+            const results = lines.map(line => {
+                try {
+                    return JSON.parse(line);
+                } catch(e) { return null; }
+            }).filter(r => r);
+            
+            if (!results.length) {
+                return ctx.editOrReply({ content: '❌ No results found.' });
+            }
+            
+            const embed = new Embed()
+                .setTitle(`Search Results for: ${query}`)
+                .setColor('#FF0000');
+                
+            let description = '**Select a song from the dropdown menu below:**\n\n';
+            results.slice(0, 10).forEach((res, i) => {
+                const duration = res.duration ? `${Math.floor(res.duration / 60)}:${(res.duration % 60).toString().padStart(2, '0')}` : 'Unknown';
+                const channel = res.channel || res.uploader || 'Unknown';
+                description += `**${i + 1}.** [${res.title || res.fulltitle}](${res.webpage_url || res.url}) - \`${duration}\` | 👤 \`${channel}\`\n`;
+            });
+            
+            embed.setDescription(description);
+            embed.setFooter({ text: 'YouTube Search Results' });
+            
+            const selectMenu = new StringSelectMenu()
+                .setCustomId('search_select')
+                .setPlaceholder('Select a song to play...')
+                .setOptions(results.slice(0, 10).map((res, i) => {
+                    const duration = res.duration ? `${Math.floor(res.duration / 60)}:${(res.duration % 60).toString().padStart(2, '0')}` : 'Unknown';
+                    const channel = res.channel || res.uploader || 'Unknown';
+                    const title = (res.title || res.fulltitle).substring(0, 95);
+                    return new StringSelectOption()
+                        .setLabel(`${i + 1}. ${title}`)
+                        .setDescription(`👤 ${channel} | ⏱️ ${duration}`.substring(0, 100))
+                        .setValue(res.webpage_url || res.url);
+                }));
+
+            const row = new ActionRow().setComponents([selectMenu]);
+            
+            await ctx.editOrReply({ content: '', embeds: [embed], components: [row] });
+            
+        } catch (e) {
+            console.error("Search Error:", e.message);
+            return ctx.editOrReply({ content: '❌ An error occurred while searching.' });
+        }
+    }
+}

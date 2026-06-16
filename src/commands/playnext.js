@@ -3,17 +3,17 @@ import { musicManager } from '../services/MusicManager.js';
 
 const options = {
     query: createStringOption({
-        description: 'URL or search term for the song',
+        description: 'URL or search term for the song to play next',
         required: true
     })
 };
 
 @Declare({
-    name: 'play',
-    description: 'Play a song from YouTube'
+    name: 'playnext',
+    description: 'Add a song to play next in the queue'
 })
 @Options(options)
-export default class PlayCommand extends Command {
+export default class PlayNextCommand extends Command {
     async run(ctx) {
         const { query } = ctx.options;
         const voiceState = await ctx.client.cache.voiceStates?.get(ctx.member.id, ctx.guildId);
@@ -23,6 +23,15 @@ export default class PlayCommand extends Command {
             return ctx.write({ content: '❌ You must join a voice channel first!', flags: 64 });
         }
         
+        const { canUseVoiceChannel, loadSettings } = await import('../services/serverSettings.js');
+        if (!canUseVoiceChannel(ctx.guildId, voiceChannelId)) {
+            const settings = loadSettings(ctx.guildId);
+            return ctx.write({ 
+                content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+                flags: 64 
+            });
+        }
+
         await ctx.deferReply();
         
         try {
@@ -31,7 +40,7 @@ export default class PlayCommand extends Command {
                 return ctx.editOrReply({ content: '❌ Could not fetch your voice channel from the cache.' });
             }
             
-            await musicManager.play(channel, query, ctx);
+            await musicManager.playNextSong(channel, query, ctx);
         } catch (e) {
             return ctx.editOrReply({ content: `❌ Error: ${e.message}` });
         }

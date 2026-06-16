@@ -1,7 +1,8 @@
 {
   "name": "discord-music-bot",
   "version": "5.1.0",
-  "description": "A feature-rich Discord music bot using DisTube + yt-dlp",
+  "type": "module",
+  "description": "A feature-rich, high-performance Discord music bot using Seyfert + yt-dlp",
   "main": "src/index.js",
   "scripts": {
     "start": "bun src/index.js",
@@ -12,16 +13,12 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
+    "@discordjs/opus": "latest",
     "@discordjs/voice": "latest",
-    "@distube/soundcloud": "latest",
-    "@distube/spotify": "latest",
-    "chalk": "latest",
-    "discord.js": "latest",
-    "distube": "latest",
-    "dotenv": "latest",
-    "libsodium-wrappers": "latest",
-    "opusscript": "latest",
-    "tweetnacl": "latest"
+    "@snazzah/davey": "latest",
+    "ffmpeg-static": "latest",
+    "seyfert": "latest",
+    "sodium-native": "latest"
   },
   "keywords": [
     "discord",
@@ -29,7 +26,8 @@
     "bot",
     "youtube",
     "spotify",
-    "yt-dlp"
+    "yt-dlp",
+    "seyfert"
   ],
   "license": "MIT"
 }

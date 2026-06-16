@@ -1,244 +1,72 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { RepeatMode } = require('distube');
-const { isGuildInteraction, isDJ } = require('../utils/permissions');
+import { Command, Declare, Options, createIntegerOption } from 'seyfert';
+import { musicManager } from '../services/MusicManager.js';
 
-// Export multiple commands from this file
-const commands = {
-  // Now Playing
-  np: {
-    data: new SlashCommandBuilder()
-      .setName('np')
-      .setDescription('Display the currently playing song with details.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || !queue.songs.length) {
-        return interaction.reply({ content: 'No song is currently playing.' });
-      }
-
-      const song = queue.songs[0];
-      let msg = '🎵 **Now Playing:** ' + song.name;
-      msg += ' [`' + song.formattedDuration + '`]';
-      msg += '\n👤 Requested by: ' + (song.user ? '<@' + song.user.id + '>' : 'Unknown');
-      msg += '\n⏱️ ' + queue.formattedCurrentTime + ' / ' + song.formattedDuration;
-      if (queue.repeatMode === RepeatMode.SONG) msg += '\n🔂 Looping song';
-      if (queue.repeatMode === RepeatMode.QUEUE) msg += '\n🔁 Looping queue';
-      if (queue.autoplay) msg += '\n📻 Autoplay enabled';
-      
-      return interaction.reply(msg);
-    }
-  },
-
-  // Pause
-  pause: {
-    data: new SlashCommandBuilder()
-      .setName('pause')
-      .setDescription('Pause playback.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      if (queue.paused) {
-        return interaction.reply({ content: 'Playback is already paused. Use `/resume` to continue.', ephemeral: true });
-      }
-
-      queue.pause();
-      return interaction.reply('⏸️ Playback paused.');
-    }
-  },
-
-  // Resume
-  resume: {
-    data: new SlashCommandBuilder()
-      .setName('resume')
-      .setDescription('Resume playback.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      if (!queue.paused) {
-        return interaction.reply({ content: 'Playback is not paused.', ephemeral: true });
-      }
-
-      queue.resume();
-      return interaction.reply('▶️ Playback resumed.');
-    }
-  },
-
-  // Stop
-  stop: {
-    data: new SlashCommandBuilder()
-      .setName('stop')
-      .setDescription('Stop playback, clear the queue, and disconnect.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        // No queue but bot might still be in voice — disconnect it
-        if (interaction.guild?.members?.me?.voice?.channel) {
-          client.clearGuildTimeout?.(interaction.guildId);
-          try {
-            if (client.distube?.voices?.get(interaction.guildId)) {
-              client.distube.voices.leave(interaction.guildId);
-            } else {
-              const { getVoiceConnection } = require('@discordjs/voice');
-              const conn = getVoiceConnection(interaction.guildId);
-              if (conn) conn.destroy();
-            }
-          } catch {}
-          return interaction.reply('⏹️ Disconnected from voice channel.');
+@Declare({
+    name: 'pause',
+    description: 'Pause the current playing music'
+})
+export class PauseCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue) {
+            return ctx.write({ content: 'There is no music playing.', flags: 64 });
         }
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      // Flag prevents the async FINISH handler from auto-playing / starting timers
-      queue._stopped = true;
-      client.clearGuildTimeout?.(interaction.guildId);
-      await queue.stop();
-      client.clearGuildTimeout?.(interaction.guildId);
-
-      // Force disconnect — queue.stop() clears the queue but does not leave voice
-      try {
-        if (client.distube?.voices?.get(interaction.guildId)) {
-          client.distube.voices.leave(interaction.guildId);
-        } else {
-          const { getVoiceConnection } = require('@discordjs/voice');
-          const connection = getVoiceConnection(interaction.guildId);
-          if (connection) connection.destroy();
+        if (queue.paused) {
+            return ctx.write({ content: 'Playback is already paused.', flags: 64 });
         }
-      } catch {}
-
-      return interaction.reply('⏹️ Playback stopped and queue cleared.');
+        
+        musicManager.pause(ctx.guildId);
+        await ctx.write({ content: '⏸️ Playback paused.' });
     }
-  },
+}
 
-  // Volume
-  volume: {
-    data: new SlashCommandBuilder()
-      .setName('volume')
-      .setDescription('Set playback volume (0 to 200).')
-      .addIntegerOption(option =>
-        option.setName('level')
-          .setDescription('Volume level (0-200, default is 100)')
-          .setRequired(true)
-          .setMinValue(0)
-          .setMaxValue(200)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      const level = interaction.options.getInteger('level');
-      queue.setVolume(level);
-      
-      const emoji = level === 0 ? '🔇' : level < 50 ? '🔈' : level < 100 ? '🔉' : '🔊';
-      return interaction.reply(emoji + ' Volume set to **' + level + '%**');
+@Declare({
+    name: 'resume',
+    description: 'Resume the paused music'
+})
+export class ResumeCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue) {
+            return ctx.write({ content: 'There is no active queue.', flags: 64 });
+        }
+        if (!queue.paused) {
+            return ctx.write({ content: 'Playback is not paused.', flags: 64 });
+        }
+        
+        musicManager.resume(ctx.guildId);
+        await ctx.write({ content: '▶️ Playback resumed.' });
     }
-  },
+}
 
-  // Skip (force)
-  skip: {
-    data: new SlashCommandBuilder()
-      .setName('skip')
-      .setDescription('Skip the current song.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || !queue.songs.length) {
-        return interaction.reply({ content: 'There is no song playing.' });
-      }
-
-      // Check permissions: requester or DJ
-      const song = queue.songs[0];
-      const isRequester = song.user && song.user.id === interaction.user.id;
-      if (!isRequester && !isDJ(interaction.member, client)) {
-        return interaction.reply({ content: 'You do not have permission to skip directly. Use /voteskip instead.', ephemeral: true });
-      }
-
-      try {
-        await queue.skip();
-        return interaction.reply('⏭️ Song skipped.');
-      } catch (error) {
-        // If skip fails (no more songs), stop and disconnect
-        queue._stopped = true;
-        client.clearGuildTimeout?.(interaction.guildId);
-        await queue.stop();
-        client.clearGuildTimeout?.(interaction.guildId);
-        try {
-          if (client.distube?.voices?.get(interaction.guildId)) {
-            client.distube.voices.leave(interaction.guildId);
-          } else {
-            const { getVoiceConnection } = require('@discordjs/voice');
-            const conn = getVoiceConnection(interaction.guildId);
-            if (conn) conn.destroy();
-          }
-        } catch {}
-        return interaction.reply('⏹️ Skipped - queue is now empty.');
-      }
-    }
-  },
-
-  // Previous - play previous song
-  previous: {
-    data: new SlashCommandBuilder()
-      .setName('previous')
-      .setDescription('Play the previous song.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      if (!queue.previousSongs || queue.previousSongs.length === 0) {
-        return interaction.reply({ content: 'No previous song available.', ephemeral: true });
-      }
-
-      try {
-        await queue.previous();
-        return interaction.reply('⏮️ Playing previous song.');
-      } catch (err) {
-        return interaction.reply({ content: '❌ Could not play previous song: ' + err.message, ephemeral: true });
-      }
-    }
-  }
+const volumeOptions = {
+    level: createIntegerOption({
+        description: 'Volume level (0-200, default is 100)',
+        required: true,
+        min_value: 0,
+        max_value: 200
+    })
 };
 
-module.exports = commands;
+@Declare({
+    name: 'volume',
+    description: 'Set playback volume'
+})
+@Options(volumeOptions)
+export class VolumeCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue) {
+            return ctx.write({ content: 'There is no active queue.', flags: 64 });
+        }
+        
+        const level = ctx.options.level;
+        musicManager.setVolume(ctx.guildId, level);
+        
+        const emoji = level === 0 ? '🔇' : level < 50 ? '🔈' : level < 100 ? '🔉' : '🔊';
+        await ctx.write({ content: `${emoji} Volume set to **${level}%**` });
+    }
+}

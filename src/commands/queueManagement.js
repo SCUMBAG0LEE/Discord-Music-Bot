@@ -1,224 +1,172 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { isGuildInteraction, isDJ } = require('../utils/permissions');
+import { Command, Declare, Options, createIntegerOption } from 'seyfert';
+import { musicManager } from '../services/MusicManager.js';
 
-const commands = {
-  // Shuffle
-  shuffle: {
-    data: new SlashCommandBuilder()
-      .setName('shuffle')
-      .setDescription('Shuffle the queue (except the current song).'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length < 2) {
-        return interaction.reply({ content: 'Not enough songs in the queue to shuffle.' });
-      }
-
-      try {
-        queue.shuffle();
-        return interaction.reply('🔀 Queue shuffled! (' + (queue.songs.length - 1) + ' songs)');
-      } catch (err) {
-        return interaction.reply({ content: '❌ Failed to shuffle: ' + err.message, ephemeral: true });
-      }
+@Declare({
+    name: 'shuffle',
+    description: 'Shuffle the queue (except the current song)'
+})
+export class ShuffleCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length < 2) {
+            return ctx.write({ content: 'Not enough songs in the queue to shuffle.', flags: 64 });
+        }
+        
+        musicManager.shuffle(ctx.guildId);
+        await ctx.write({ content: `🔀 Queue shuffled! (${queue.songs.length - 1} songs)` });
     }
-  },
+}
 
-  // Clear
-  clear: {
-    data: new SlashCommandBuilder()
-      .setName('clear')
-      .setDescription('Clear the queue (except the currently playing song).'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue) {
-        return interaction.reply({ content: 'There is no active queue.' });
-      }
-
-      // Check permission for clearing
-      if (!isDJ(interaction.member, client)) {
-        return interaction.reply({ content: 'Only DJs can clear the queue.', ephemeral: true });
-      }
-
-      // Keep only the current song (index 0), remove everything else
-      const removedCount = queue.songs.length - 1;
-      if (removedCount > 0) {
-        queue.songs.splice(1);
-        return interaction.reply('🗑️ Cleared **' + removedCount + '** songs from the queue.');
-      }
-      return interaction.reply({ content: 'Queue is already empty (only current song playing).', ephemeral: true });
+@Declare({
+    name: 'clear',
+    description: 'Clear the queue (except the currently playing song)'
+})
+export class ClearCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length < 2) {
+            return ctx.write({ content: 'Queue is already empty (only current song playing).', flags: 64 });
+        }
+        
+        const removedCount = queue.songs.length - 1;
+        musicManager.clear(ctx.guildId);
+        await ctx.write({ content: `🗑️ Cleared **${removedCount}** songs from the queue.` });
     }
-  },
+}
 
-  // Remove
-  remove: {
-    data: new SlashCommandBuilder()
-      .setName('remove')
-      .setDescription('Remove a song from the queue by its position (not the currently playing one).')
-      .addIntegerOption(option =>
-        option.setName('index')
-          .setDescription('Position in queue (starting at 2)')
-          .setRequired(true)
-          .setMinValue(2)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length < 2) {
-        return interaction.reply({ content: 'No songs available to remove.' });
-      }
-
-      const index = interaction.options.getInteger('index');
-      if (index > queue.songs.length) {
-        return interaction.reply({ content: 'Invalid index. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
-      }
-
-      const songToRemove = queue.songs[index - 1];
-      
-      // Check permissions: requester of the song being removed, or DJ
-      const isRequester = songToRemove.user && songToRemove.user.id === interaction.user.id;
-      if (!isRequester && !isDJ(interaction.member, client)) {
-        return interaction.reply({ content: 'You can only remove songs you requested.', ephemeral: true });
-      }
-
-      const removed = queue.songs.splice(index - 1, 1)[0];
-      if (removed) {
-        return interaction.reply('🗑️ Removed **' + removed.name + '** from the queue.');
-      }
-      return interaction.reply({ content: 'Could not remove song.', ephemeral: true });
-    }
-  },
-
-  // Move
-  move: {
-    data: new SlashCommandBuilder()
-      .setName('move')
-      .setDescription('Move a song in the queue from one position to another.')
-      .addIntegerOption(option =>
-        option.setName('from')
-          .setDescription('Current position (starting at 2)')
-          .setRequired(true)
-          .setMinValue(2)
-      )
-      .addIntegerOption(option =>
-        option.setName('to')
-          .setDescription('New position')
-          .setRequired(true)
-          .setMinValue(2)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length < 3) {
-        return interaction.reply({ content: 'Not enough songs in the queue to move.' });
-      }
-
-      const from = interaction.options.getInteger('from');
-      const to = interaction.options.getInteger('to');
-
-      if (from > queue.songs.length || to > queue.songs.length) {
-        return interaction.reply({ content: 'Invalid positions. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
-      }
-
-      // Remove from old position and insert at new position
-      const [song] = queue.songs.splice(from - 1, 1);
-      queue.songs.splice(to - 1, 0, song);
-      
-      return interaction.reply('↔️ Moved **' + song.name + '** from position ' + from + ' to ' + to + '.');
-    }
-  },
-
-  // Jump
-  jump: {
-    data: new SlashCommandBuilder()
-      .setName('jump')
-      .setDescription('Jump to a specific song in the queue (skipping intermediate songs).')
-      .addIntegerOption(option =>
-        option.setName('index')
-          .setDescription('Position in queue (starting at 2)')
-          .setRequired(true)
-          .setMinValue(2)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length < 2) {
-        return interaction.reply({ content: 'There are no songs to jump to.' });
-      }
-
-      const index = interaction.options.getInteger('index');
-      if (index > queue.songs.length) {
-        return interaction.reply({ content: 'Invalid index. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
-      }
-
-      const targetSong = queue.songs[index - 1];
-      
-      try {
-        await queue.jump(index - 1);
-        return interaction.reply('⏭️ Jumping to **' + targetSong.name + '**.');
-      } catch (err) {
-        return interaction.reply({ content: '❌ Failed to jump: ' + err.message, ephemeral: true });
-      }
-    }
-  },
-
-  // Skip To (alias for jump)
-  skipto: {
-    data: new SlashCommandBuilder()
-      .setName('skipto')
-      .setDescription('Skip to a specific song in the queue (alias for /jump).')
-      .addIntegerOption(option =>
-        option.setName('position')
-          .setDescription('Position in queue to skip to')
-          .setRequired(true)
-          .setMinValue(2)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length < 2) {
-        return interaction.reply({ content: 'There are no songs to skip to.' });
-      }
-
-      const position = interaction.options.getInteger('position');
-      if (position > queue.songs.length) {
-        return interaction.reply({ content: 'Invalid position. Queue only has ' + queue.songs.length + ' songs.', ephemeral: true });
-      }
-
-      const targetSong = queue.songs[position - 1];
-      
-      try {
-        await queue.jump(position - 1);
-        return interaction.reply('⏭️ Skipped to **' + targetSong.name + '**.');
-      } catch (err) {
-        return interaction.reply({ content: '❌ Failed to skip: ' + err.message, ephemeral: true });
-      }
-    }
-  }
+const indexOption = {
+    index: createIntegerOption({
+        description: 'Position in queue (starts at 1)',
+        required: true,
+        min_value: 1
+    })
 };
 
-module.exports = commands;
+@Declare({
+    name: 'remove',
+    description: 'Remove a song from the queue by its position'
+})
+@Options(indexOption)
+export class RemoveCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length < 2) {
+            return ctx.write({ content: 'No songs available to remove.', flags: 64 });
+        }
+        
+        const index = ctx.options.index;
+        if (index > queue.songs.length) {
+            return ctx.write({ content: `Invalid index. Queue only has ${queue.songs.length} songs.`, flags: 64 });
+        }
+        
+        // The queue UI displays the first upcoming song as '1.' which corresponds to queue.songs[1]
+        // So the raw index passed by the user is exactly the index we want to target!
+        const removed = musicManager.remove(ctx.guildId, index);
+        if (removed) {
+            await ctx.write({ content: `🗑️ Removed **${removed.title}** from the queue.` });
+        } else {
+            await ctx.write({ content: 'Could not remove song.', flags: 64 });
+        }
+    }
+}
+
+const moveOptions = {
+    from: createIntegerOption({
+        description: 'Current position (starts at 1)',
+        required: true,
+        min_value: 1
+    }),
+    to: createIntegerOption({
+        description: 'New position',
+        required: true,
+        min_value: 1
+    })
+};
+
+@Declare({
+    name: 'move',
+    description: 'Move a song in the queue from one position to another'
+})
+@Options(moveOptions)
+export class MoveCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length < 3) {
+            return ctx.write({ content: 'Not enough songs in the queue to move.', flags: 64 });
+        }
+        
+        const from = ctx.options.from;
+        const to = ctx.options.to;
+        
+        if (from > queue.songs.length || to > queue.songs.length) {
+            return ctx.write({ content: `Invalid positions. Queue only has ${queue.songs.length} songs.`, flags: 64 });
+        }
+        
+        const moved = musicManager.move(ctx.guildId, from, to);
+        if (moved) {
+            await ctx.write({ content: `↔️ Moved **${moved.title}** from position ${from} to ${to}.` });
+        } else {
+            await ctx.write({ content: 'Could not move song.', flags: 64 });
+        }
+    }
+}
+
+@Declare({
+    name: 'jump',
+    description: 'Jump to a specific song in the queue'
+})
+@Options(indexOption)
+export class JumpCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length < 2) {
+            return ctx.write({ content: 'There are no songs to jump to.', flags: 64 });
+        }
+        
+        const index = ctx.options.index;
+        if (index > queue.songs.length) {
+            return ctx.write({ content: `Invalid index. Queue only has ${queue.songs.length} songs.`, flags: 64 });
+        }
+        
+        const targetSong = queue.songs[index];
+        musicManager.jump(ctx.guildId, index);
+        
+        await ctx.write({ content: `⏭️ Jumping to **${targetSong.title}**.` });
+    }
+}
+
+@Declare({
+    name: 'skipto',
+    description: 'Skip to a specific song in the queue (alias for /jump)'
+})
+@Options({
+    position: createIntegerOption({
+        description: 'Position in queue to skip to',
+        required: true,
+        min_value: 1
+    })
+})
+export class SkiptoCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length < 2) {
+            return ctx.write({ content: 'There are no songs to skip to.', flags: 64 });
+        }
+        
+        const position = ctx.options.position;
+        if (position > queue.songs.length) {
+            return ctx.write({ content: `Invalid position. Queue only has ${queue.songs.length} songs.`, flags: 64 });
+        }
+        
+        const targetSong = queue.songs[position];
+        musicManager.jump(ctx.guildId, position);
+        
+        await ctx.write({ content: `⏭️ Skipped to **${targetSong.title}**.` });
+    }
+}

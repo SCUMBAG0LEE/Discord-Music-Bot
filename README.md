@@ -1,12 +1,12 @@
 # 🎵 Discord Music Bot
 
-A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, Bandcamp, Vimeo, Twitch, and Radio** support, built with discord.js v14 and [DisTube](https://distube.js.org/) using **yt-dlp** for reliable playback.
+A feature-rich, ultra-high-performance Discord music bot with **YouTube, Spotify, SoundCloud, Bandcamp, Vimeo, Twitch, and Radio** support. Rebuilt from the ground up using **Seyfert** and a custom **native yt-dlp child-process bridge** for maximum reliability and memory efficiency.
 
 ## ✨ Features
 
 ### 🎶 Multi-Platform Support
-- **YouTube** — Songs, playlists, and interactive search (via yt-dlp)
-- **Spotify** — Tracks, playlists, and albums (auto-converts to YouTube)
+- **YouTube** — Direct stream extraction with automatic age-restriction bypass
+- **Spotify** — Tracks, playlists, and albums (auto-proxied to YouTube)
 - **SoundCloud** — Tracks, playlists, and interactive search
 - **Bandcamp** — Tracks and albums
 - **Vimeo** — Videos
@@ -22,20 +22,16 @@ A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, Bandcamp, 
 - **Loop Mode** — Off, repeat song, or repeat queue
 - **Autoplay** — Automatically queue related songs when queue ends
 
-### 💾 Saved Playlists
-- Save current queue as a reusable playlist
-- Load, append, and delete your playlists
-- Personal per-user playlist storage
+### ❤️ Database & Favorites
+- **Fast Local DB** — Uses `bun:sqlite` for extreme performance
+- **Favorites** — `/like` your current song and view with `/favorites`
 
 ### ⏯️ Advanced Playback
 - **Seek** — Jump to any timestamp in a song
-- **Replay** — Restart the current song instantly
-- **Previous** — Play the previous song
+- **Previous** — Play the previous song (50 song history)
 - **24/7 Mode** — Keep the bot in voice channel indefinitely
 - **Volume Control** — 0-200% range
-- **Vote Skip** — Democratic skipping with configurable ratio
-- **Audio Filters** — Bass boost, nightcore, vaporwave, and more
-- **Lyrics** — Fetch song lyrics automatically
+- **Vote Skip** — Democratic skipping with configurable ratio based on voice channel members
 - **Song in Status** — Show current song as bot activity (Streaming badge for YouTube/Twitch)
 
 ### 🎛️ Rich Now Playing
@@ -47,42 +43,32 @@ A feature-rich Discord music bot with **YouTube, Spotify, SoundCloud, Bandcamp, 
 
 ```
 src/
-├── index.js                 # Entry point & command loader
+├── index.js                 # Entry point & Seyfert client initialization
 ├── commands/
 │   ├── play.js              # /play - Multi-platform playback
-│   ├── search.js            # /search - Interactive YouTube/SoundCloud search
+│   ├── search.js            # /search - Interactive YouTube search
 │   ├── queue.js             # /queue - Paginated queue display
-│   ├── playback.js          # /pause, /resume, /stop, /volume, /skip, /np, /previous
-│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump, /skipto
-│   ├── playlists.js         # /savelist, /loadlist, /deletelist, /playlists, /appendlist
-│   ├── advanced.js          # /seek, /replay, /nowplaying, /radio
-│   ├── settings.js          # /settings, /forceskip, /voteskip, /forceplay, /playnext, /loop, /autoplay, /247
-│   ├── filters.js           # /filter, /clearfilter, /filters
-│   ├── admin.js             # /settc, /setvc, /queuetype, /skipratio, /autoplaylist, /songinstatus, /serversettings, /maxduration, /setdjrole, /forceremove
-│   ├── owner.js             # /setavatar, /setname, /setstatus, /setgame, /shutdown, /debug, /eval, /servers, /leaveserver
-│   ├── lyrics.js            # /lyrics - Fetch song lyrics
-│   └── utility.js           # /help, /refreshcommands, /ping, /stats
-├── plugins/
-│   └── YtDlpPlugin.js       # Custom DisTube plugin using yt-dlp
+│   ├── skip.js              # /skip, /voteskip
+│   ├── advanced.js          # /seek, /previous, /loop, /autoplay
+│   └── favorites.js         # /like, /favorites
 ├── services/
-│   ├── distube.js           # DisTube initialization & event handling
-│   ├── playlists.js         # File-based playlist storage
-│   └── serverSettings.js    # Per-server configuration storage
+│   ├── MusicManager.js      # Native yt-dlp extraction and @discordjs/voice stream logic
+│   └── DatabaseManager.js   # bun:sqlite database controller
 └── utils/
     ├── formatters.js        # Duration formatting utilities
-    ├── permissions.js       # DJ/owner permission checks
+    ├── cookies.js           # Dynamic JSON/Netscape cookie parser
     └── logger.js            # Colored console logging
 data/
-├── playlists/               # User playlists (auto-created)
-└── servers/                 # Server settings (auto-created)
+└── database.sqlite          # Local SQLite database
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **Bun** (latest version) - Required for current DisTube 5.2.x + discord.js voice stack
+- **Bun** (latest version) - Required for Seyfert
 - **FFmpeg** — Required for audio processing
+- **yt-dlp** — Required for metadata extraction
 - **yt-dlp** — Required for YouTube playback
   ```bash
   # Ubuntu/Debian
@@ -131,8 +117,6 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `BOT_OWNER_ID` | ✅ | Your Discord user ID (for owner-only commands) |
 | `DJ_ROLE_ID` | ❌ | Role ID that can force-skip songs |
 | `GUILD_ID` | ❌ | Register commands to a single guild (instant, for testing) |
-| `SPOTIFY_CLIENT_ID` | ⚠️ | From [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
-| `SPOTIFY_CLIENT_SECRET` | ⚠️ | From Spotify Developer Dashboard |
 | `ACTIVITY_TYPE` | ❌ | `PLAYING`, `LISTENING`, `WATCHING`, `COMPETING`, or `STREAMING` (default: `LISTENING`) |
 | `ACTIVITY_NAME` | ❌ | Activity text (default: `music \| /help`) |
 | `STREAMING_URL` | ❌ | Twitch or YouTube URL — required only if `ACTIVITY_TYPE=STREAMING` |
@@ -146,8 +130,6 @@ Copy `.env.example` to `.env` and fill in your credentials:
 > | Playing from other sources (1 server) | **Playing** `Song Name` |
 > | Playing in 2+ servers | **Listening to** `music in multiple servers` |
 > | Idle / no queues | Reverts to your `.env` configured activity |
-
-> ⚠️ Spotify credentials are required only if you want Spotify support. The bot works fine with just YouTube.
 
 ### yt-dlp (YouTube Backend)
 

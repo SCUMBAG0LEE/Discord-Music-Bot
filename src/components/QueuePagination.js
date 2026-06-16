@@ -1,48 +1,40 @@
-import { Command, Declare, Options, createIntegerOption, ActionRow, Button, Embed } from 'seyfert';
+import { ComponentCommand, ActionRow, Button } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
 
-const options = {
-    page: createIntegerOption({
-        description: 'Page number to view',
-        required: false
-    })
-};
+export default class QueuePagination extends ComponentCommand {
+    componentType = "Button";
 
-@Declare({
-    name: 'queue',
-    description: 'Display the current music queue'
-})
-@Options(options)
-export default class QueueCommand extends Command {
+    filter(ctx) {
+        return ctx.customId.startsWith('queue_prev_') || ctx.customId.startsWith('queue_next_');
+    }
+
     async run(ctx) {
         const queue = musicManager.getQueue(ctx.guildId);
         
         if (!queue || queue.songs.length === 0) {
-            return ctx.write({ content: 'The queue is currently empty.', flags: 64 });
+            return ctx.editOrReply({ content: 'The queue is currently empty.', components: [] });
         }
         
-        const page = ctx.options.page || 1;
+        const page = parseInt(ctx.customId.split('_').pop());
         const totalPages = Math.ceil(queue.songs.length / 10) || 1;
         
         if (page > totalPages || page < 1) {
-            return ctx.write({ content: `❌ Invalid page. There are only ${totalPages} pages.`, flags: 64 });
+            return ctx.editOrReply({ content: `❌ Invalid page. There are only ${totalPages} pages.`, components: [] });
         }
         
         const start = (page - 1) * 10;
         const end = start + 10;
         const currentSongs = queue.songs.slice(start, end);
         
-        let description = '';
+        let message = `**Current Queue (Page ${page}/${totalPages}):**\n\n`;
         currentSongs.forEach((song, i) => {
             const index = start + i;
-            description += `${index === 0 ? '▶️' : `**${index}.**`} [${song.title}](${song.originalUrl}) - \`${song.duration}\`\n`;
+            message += `${index === 0 ? '▶️' : `${index}.`} **${song.title}** - \`${song.duration}\`\n`;
         });
         
-        const embed = new Embed()
-            .setTitle(`📋 Current Queue`)
-            .setDescription(description)
-            .setColor('#5865F2')
-            .setFooter({ text: `Page ${page}/${totalPages} • Total Songs: ${queue.songs.length}` });
+        if (queue.songs.length > 10) {
+            message += `\n*Total Songs: ${queue.songs.length}*`;
+        }
         
         const row = new ActionRow().setComponents([
             new Button()
@@ -57,6 +49,7 @@ export default class QueueCommand extends Command {
                 .setDisabled(page === totalPages)
         ]);
         
-        await ctx.write({ embeds: [embed], components: [row] });
+        // Update the existing message with the new page content
+        await ctx.interaction.update({ content: message, components: [row] });
     }
 }

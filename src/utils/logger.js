@@ -1,5 +1,3 @@
-const chalk = require('chalk');
-
 /**
  * Log levels for filtering output
  */
@@ -22,27 +20,12 @@ function getTimestamp() {
 }
 
 /**
- * Get colored prefix based on log level
+ * Get prefix based on log level
  * @param {string} level
  * @returns {string}
  */
 function getPrefix(level) {
-  const timestamp = chalk.gray(`[${getTimestamp()}]`);
-  
-  switch (level) {
-    case 'DEBUG':
-      return `${timestamp} ${chalk.magenta('[DEBUG]')}`;
-    case 'INFO':
-      return `${timestamp} ${chalk.blue('[INFO]')}`;
-    case 'WARN':
-      return `${timestamp} ${chalk.yellow('[WARN]')}`;
-    case 'ERROR':
-      return `${timestamp} ${chalk.red('[ERROR]')}`;
-    case 'SUCCESS':
-      return `${timestamp} ${chalk.green('[SUCCESS]')}`;
-    default:
-      return timestamp;
-  }
+  return `[${getTimestamp()}] [${level}]`;
 }
 
 /**
@@ -51,73 +34,54 @@ function getPrefix(level) {
 const logger = {
   /**
    * Debug level - verbose information for troubleshooting
-   * @param {string} category - Category/module name
-   * @param {string} message - Log message
-   * @param {Object} [data] - Optional data to log
    */
   debug(category, message, data = null) {
     if (currentLevel > LogLevel.DEBUG) return;
-    const cat = chalk.cyan(`[${category}]`);
-    console.log(`${getPrefix('DEBUG')} ${cat} ${message}`);
-    if (data) console.log(chalk.gray('  →'), data);
+    console.log(`${getPrefix('DEBUG')} [${category}] ${message}`);
+    if (data) console.log('  →', data);
   },
 
   /**
    * Info level - general information
-   * @param {string} category - Category/module name
-   * @param {string} message - Log message
-   * @param {Object} [data] - Optional data to log
    */
   info(category, message, data = null) {
     if (currentLevel > LogLevel.INFO) return;
-    const cat = chalk.cyan(`[${category}]`);
-    console.log(`${getPrefix('INFO')} ${cat} ${message}`);
-    if (data) console.log(chalk.gray('  →'), data);
+    console.log(`${getPrefix('INFO')} [${category}] ${message}`);
+    if (data) console.log('  →', data);
   },
 
   /**
    * Warning level - potential issues
-   * @param {string} category - Category/module name
-   * @param {string} message - Log message
-   * @param {Object} [data] - Optional data to log
    */
   warn(category, message, data = null) {
     if (currentLevel > LogLevel.WARN) return;
-    const cat = chalk.cyan(`[${category}]`);
-    console.warn(`${getPrefix('WARN')} ${cat} ${message}`);
-    if (data) console.warn(chalk.gray('  →'), data);
+    console.warn(`${getPrefix('WARN')} [${category}] ${message}`);
+    if (data) console.warn('  →', data);
   },
 
   /**
    * Error level - errors that need attention
-   * @param {string} category - Category/module name
-   * @param {string} message - Log message
-   * @param {Error|Object} [error] - Optional error object
    */
   error(category, message, error = null) {
     if (currentLevel > LogLevel.ERROR) return;
-    const cat = chalk.cyan(`[${category}]`);
-    console.error(`${getPrefix('ERROR')} ${cat} ${message}`);
+    console.error(`${getPrefix('ERROR')} [${category}] ${message}`);
     if (error) {
       if (error instanceof Error) {
-        console.error(chalk.red('  → Error:'), error.message);
+        console.error('  → Error:', error.message);
         if (currentLevel === LogLevel.DEBUG && error.stack) {
-          console.error(chalk.gray(error.stack));
+          console.error(error.stack);
         }
       } else {
-        console.error(chalk.gray('  →'), error);
+        console.error('  →', error);
       }
     }
   },
 
   /**
    * Success level - successful operations
-   * @param {string} category - Category/module name
-   * @param {string} message - Log message
    */
   success(category, message) {
-    const cat = chalk.cyan(`[${category}]`);
-    console.log(`${getPrefix('SUCCESS')} ${cat} ${message}`);
+    console.log(`${getPrefix('SUCCESS')} [${category}] ${message}`);
   },
 
   /**
@@ -129,7 +93,7 @@ const logger = {
    */
   command(commandName, userId, guildId, options = {}) {
     const optStr = Object.keys(options).length > 0 
-      ? chalk.gray(` | options: ${JSON.stringify(options)}`)
+      ? ` | options: ${JSON.stringify(options)}`
       : '';
     this.info('Command', `/${commandName} by ${userId} in ${guildId}${optStr}`);
   },
@@ -141,7 +105,7 @@ const logger = {
    */
   urlDetection(url, detectedType) {
     const truncatedUrl = url.length > 80 ? url.substring(0, 80) + '...' : url;
-    this.debug('URLDetect', `"${truncatedUrl}" → ${chalk.yellow(detectedType)}`);
+    this.debug('URLDetect', `"${truncatedUrl}" → ${detectedType}`);
   },
 
   /**
@@ -188,4 +152,4 @@ const logger = {
   }
 };
 
-module.exports = { logger, LogLevel };
+export { logger, LogLevel };

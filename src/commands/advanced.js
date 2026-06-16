@@ -1,180 +1,109 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { isGuildInteraction, isDJ, getBotVoicePermissionIssue, getVoiceChannel } = require('../utils/permissions');
-const { formatDuration, parseTimestamp } = require('../utils/formatters');
-const distubeService = require('../services/distube');
-const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
+import { Command, Declare, Options, Embed, createStringOption } from 'seyfert';
+import { musicManager } from '../services/MusicManager.js';
+import { canUseDJCommands, djOnlyError } from '../utils/permissions.js';
 
-const commands = {
-  // Seek to timestamp
-  seek: {
-    data: new SlashCommandBuilder()
-      .setName('seek')
-      .setDescription('Jump to a specific timestamp in the current song.')
-      .addStringOption(option =>
-        option.setName('time')
-          .setDescription('Timestamp (e.g., 1:30, 90, 2:15:30)')
-          .setRequired(true)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length === 0) {
-        return interaction.reply({ content: 'No song is currently playing.', ephemeral: true });
-      }
-
-      const song = queue.songs[0];
-      
-      // Can not seek in streams
-      if (song.isLive) {
-        return interaction.reply({ content: 'Cannot seek in a live stream.', ephemeral: true });
-      }
-
-      const timeStr = interaction.options.getString('time');
-      const seconds = parseTimestamp(timeStr);
-
-      if (seconds === null) {
-        return interaction.reply({ content: 'Invalid timestamp format. Use formats like: 1:30, 90, 2:15:30', ephemeral: true });
-      }
-
-      if (song.duration && seconds > song.duration) {
-        return interaction.reply({ content: 'Cannot seek past song duration (' + formatDuration(song.duration) + ').', ephemeral: true });
-      }
-
-      await interaction.deferReply();
-
-      try {
-        queue.seek(seconds);
-        return interaction.editReply('⏩ Seeked to **' + formatDuration(seconds) + '**');
-      } catch (err) {
-        return interaction.editReply('❌ Failed to seek: ' + err.message);
-      }
+function parseTimeToSeconds(timeStr) {
+    if (!timeStr) return 0;
+    
+    // Check if it's just a number (seconds)
+    if (!isNaN(timeStr)) {
+        return parseInt(timeStr);
     }
-  },
-
-  // Replay current song
-  replay: {
-    data: new SlashCommandBuilder()
-      .setName('replay')
-      .setDescription('Restart the current song from the beginning.'),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length === 0) {
-        return interaction.reply({ content: 'No song is currently playing.', ephemeral: true });
-      }
-
-      const song = queue.songs[0];
-
-      // Check permissions
-      const isRequester = song.user && song.user.id === interaction.user.id;
-      if (!isRequester && !isDJ(interaction.member, client)) {
-        return interaction.reply({ content: 'Only the requester or DJ can replay songs.', ephemeral: true });
-      }
-
-      await interaction.deferReply();
-
-      try {
-        queue.seek(0);
-        return interaction.editReply('🔁 Replaying **' + song.name + '**');
-      } catch (err) {
-        return interaction.editReply('❌ Failed to replay: ' + err.message);
-      }
+    
+    // Parse mm:ss or hh:mm:ss
+    const parts = timeStr.split(':').map(Number);
+    if (parts.some(isNaN)) return -1;
+    
+    if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+    } else if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
     }
-  },
+    
+    return -1;
+}
 
-  // Enhanced Now Playing with progress bar and embed
-  nowplaying: {
-    data: new SlashCommandBuilder()
-      .setName('nowplaying')
-      .setDescription('Show detailed now playing info with progress bar.'),
+const seekOptions = {
+    time: createStringOption({
+        description: 'Time to seek to (e.g., 120, 2:00, 1:30:00)',
+        required: true
+    })
+};
 
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length === 0) {
-        return interaction.reply({ content: 'No song is currently playing.', ephemeral: true });
-      }
-
-      const song = queue.songs[0];
-      const elapsed = queue.currentTime || 0;
-      
-      const embed = new EmbedBuilder()
-        .setColor(getSourceColor(song.source))
-        .setTitle('🎵 Now Playing')
-        .setDescription('**[' + song.name + '](' + song.url + ')**');
-
-      // Add thumbnail if available
-      if (song.thumbnail) {
-        embed.setThumbnail(song.thumbnail);
-      }
-
-      // Add progress bar for non-streams
-      if (!song.isLive && song.duration) {
-        const progress = Math.min(elapsed / song.duration, 1);
-        const progressBar = createProgressBar(progress);
-        embed.addFields({
-          name: 'Progress',
-          value: progressBar + '\n' + queue.formattedCurrentTime + ' / ' + song.formattedDuration,
-          inline: false
-        });
-      } else if (song.isLive) {
-        embed.addFields({
-          name: 'Duration',
-          value: ' LIVE',
-          inline: true
-        });
-      }
-
-      // Add metadata
-      embed.addFields(
-        { name: 'Requested by', value: song.user ? '<@' + song.user.id + '>' : 'Unknown', inline: true },
-        { name: 'Source', value: getSourceEmoji(song.source) + ' ' + capitalizeFirst(song.source || 'youtube'), inline: true }
-      );
-
-      // Add queue info
-      if (queue.songs.length > 1) {
-        embed.addFields({
-          name: 'Up Next',
-          value: queue.songs[1].name,
-          inline: false
-        });
-      }
-
-      // Add status indicators
-      const status = [];
-      if (queue.repeatMode === 1) status.push('🔂 Loop Song');
-      if (queue.repeatMode === 2) status.push('🔁 Loop Queue');
-      if (queue.autoplay) status.push('📻 Autoplay');
-      if (queue.volume !== 100) status.push('🔊 ' + queue.volume + '%');
-      if (status.length > 0) {
-        embed.setFooter({ text: status.join('  ') });
-      }
-
-      return interaction.reply({ embeds: [embed] });
+@Declare({
+    name: 'seek',
+    description: 'Jump to a specific timestamp in the current song'
+})
+@Options(seekOptions)
+export class SeekCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length === 0) {
+            return ctx.write({ content: 'There is no song playing.', flags: 64 });
+        }
+        
+        const timeStr = ctx.options.time;
+        const seconds = parseTimeToSeconds(timeStr);
+        
+        if (seconds < 0) {
+            return ctx.write({ content: '❌ Invalid time format. Use seconds (e.g., `120`) or mm:ss (e.g., `2:00`).', flags: 64 });
+        }
+        
+        musicManager.seek(ctx.guildId, seconds);
+        
+        await ctx.write({ content: `⏩ Seeking to \`${timeStr}\`...` });
     }
-  },
+}
 
-  // Radio presets list
-  radio: {
-    data: new SlashCommandBuilder()
-      .setName('radio')
-      .setDescription('List available radio presets or play one.')
-      .addStringOption(option =>
-        option.setName('station')
-          .setDescription('Station name to play')
-          .setRequired(false)
-          .addChoices(
+@Declare({
+    name: 'previous',
+    description: 'Play the previous song in the queue history'
+})
+export class PreviousCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue) {
+            return ctx.write({ content: 'There is no music playing.', flags: 64 });
+        }
+        
+        if (queue.history.length === 0) {
+            return ctx.write({ content: 'No previous songs in history.', flags: 64 });
+        }
+        
+        musicManager.previous(ctx.guildId);
+        await ctx.write({ content: '⏮️ Playing previous song...' });
+    }
+}
+
+@Declare({
+    name: 'replay',
+    description: 'Restart the current song from the beginning'
+})
+export class ReplayCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        
+        if (!queue || queue.songs.length === 0) {
+            return ctx.write({ content: 'There is no song playing.', flags: 64 });
+        }
+        
+        if (!(await canUseDJCommands(ctx, queue))) {
+            return djOnlyError(ctx);
+        }
+        
+        musicManager.seek(ctx.guildId, 0);
+        
+        await ctx.write({ content: '🔁 Replaying the current song...' });
+    }
+}
+
+const radioOptions = {
+    station: createStringOption({
+        description: 'Station preset to play',
+        required: false,
+        choices: [
             { name: '🎧 Lo-Fi Hip Hop', value: 'lofi' },
             { name: '🎷 Jazz', value: 'jazz' },
             { name: '🎻 Classical', value: 'classical' },
@@ -184,122 +113,66 @@ const commands = {
             { name: '🎹 Electronic', value: 'electronic' },
             { name: '🌿 Ambient', value: 'ambient' },
             { name: '🎤 Hip Hop', value: 'hiphop' }
-          )
-      ),
-
-    async execute(interaction, client) {
-      const station = interaction.options.getString('station');
-
-      if (!station) {
-        // Show available stations
-        const embed = new EmbedBuilder()
-          .setTitle('📻 Radio Stations')
-          .setColor(0x5865F2)
-          .setDescription(
-            '**Available Presets:**\n' +
-            '🎧 lofi — Lo-Fi Hip Hop\n' +
-            '🎷 jazz — Jazz Radio\n' +
-            '🎻 classical — Classical Music\n' +
-            '☕ chillhop — Chillhop Music\n' +
-            '🌃 synthwave — Synthwave/Retrowave\n' +
-            '🎸 rock — Rock Radio\n' +
-            '🎹 electronic — Electronic/Techno\n' +
-            '🌿 ambient — Ambient Chill\n' +
-            '🎤 hiphop — Hip Hop Radio\n\n' +
-            '*Use /play <station> or /radio <station> to tune in!*'
-          );
-
-        return interaction.reply({ embeds: [embed] });
-      }
-
-      // Play the radio station
-      const voiceChannel = getVoiceChannel(interaction.member);
-      if (!voiceChannel) {
-        return interaction.reply({ content: 'You must join a voice channel first!', ephemeral: true });
-      }
-
-      // Check voice channel lock
-      if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
-        const settings = loadSettings(interaction.guildId);
-        return interaction.reply({ 
-          content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
-          ephemeral: true 
-        });
-      }
-
-      const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
-      if (voicePermissionIssue) {
-        return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
-      }
-
-      await interaction.deferReply();
-
-      const presetUrl = distubeService.getRadioPreset(station);
-      if (!presetUrl) {
-        return interaction.editReply({ content: '❌ Unknown radio station.' });
-      }
-
-      try {
-        await client.distube.play(voiceChannel, presetUrl, {
-          textChannel: interaction.channel,
-          member: interaction.member
-        });
-        return interaction.editReply('📻 Now playing **' + station + '** radio');
-      } catch (err) {
-        const isVoiceConnectFailure =
-          err?.code === 'VOICE_CONNECT_FAILED'
-          || /Cannot connect to the voice channel after 30 seconds/i.test(err?.message || '');
-        if (isVoiceConnectFailure) {
-          const guidance = getBotVoicePermissionIssue(interaction.guild, voiceChannel)
-            || 'Voice connect timed out. If permissions are correct, this is usually a host/network issue (blocked UDP/firewall/NAT).';
-          return interaction.editReply('❌ ' + guidance);
-        }
-        return interaction.editReply('❌ Failed to play radio: ' + err.message);
-      }
-    }
-  }
+        ]
+    })
 };
 
-// Helper functions
-function createProgressBar(progress, length = 15) {
-  const filled = Math.round(progress * length);
-  const empty = length - filled;
-  const head = '🔘';
-  
-  if (filled <= 0) {
-    return head + '▬'.repeat(length - 1);
-  }
-  return '▬'.repeat(filled - 1) + head + '▬'.repeat(Math.max(0, empty));
-}
+@Declare({
+    name: 'radio',
+    description: 'List available radio presets or play one'
+})
+@Options(radioOptions)
+export class RadioCommand extends Command {
+    async run(ctx) {
+        const station = ctx.options.station;
 
-function getSourceColor(source) {
-  const colors = {
-    youtube: 0xFF0000,
-    spotify: 0x1DB954,
-    soundcloud: 0xFF5500,
-    bandcamp: 0x1DA0C3,
-    vimeo: 0x1AB7EA,
-    twitch: 0x9146FF,
-    dailymotion: 0x0066DC
-  };
-  return colors[source] || 0x5865F2;
-}
+        if (!station) {
+            const embed = new Embed()
+                .setTitle('📻 Radio Stations')
+                .setColor('#5865F2')
+                .setDescription(
+                    '**Available Presets:**\n' +
+                    '🎧 lofi — Lo-Fi Hip Hop\n' +
+                    '🎷 jazz — Jazz Radio\n' +
+                    '🎻 classical — Classical Music\n' +
+                    '☕ chillhop — Chillhop Music\n' +
+                    '🌃 synthwave — Synthwave/Retrowave\n' +
+                    '🎸 rock — Rock Radio\n' +
+                    '🎹 electronic — Electronic/Techno\n' +
+                    '🌿 ambient — Ambient Chill\n' +
+                    '🎤 hiphop — Hip Hop Radio\n\n' +
+                    '*Use `/radio <station>` or `/play <station>` to tune in!*'
+                );
+            return ctx.write({ embeds: [embed] });
+        }
 
-function getSourceEmoji(source) {
-  const emojis = {
-    youtube: '🔴',
-    spotify: '🟢',
-    soundcloud: '🟠',
-    bandcamp: '🔵',
-    vimeo: '🔵',
-    twitch: '🟣',
-    dailymotion: '🔷'
-  };
-  return emojis[source] || '🎵';
-}
+        const voiceState = await ctx.client.cache.voiceStates?.get(ctx.member.id, ctx.guildId);
+        const voiceChannelId = voiceState?.channelId;
+        
+        if (!voiceChannelId) {
+            return ctx.write({ content: '❌ You must join a voice channel first!', flags: 64 });
+        }
 
-function capitalizeFirst(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
+        const { canUseVoiceChannel, loadSettings } = await import('../services/serverSettings.js');
+        if (!canUseVoiceChannel(ctx.guildId, voiceChannelId)) {
+            const settings = loadSettings(ctx.guildId);
+            return ctx.write({ 
+                content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+                flags: 64 
+            });
+        }
 
-module.exports = commands;
+        await ctx.deferReply();
+
+        try {
+            const channel = await ctx.client.cache.channels?.get(voiceChannelId);
+            if (!channel) {
+                return ctx.editOrReply({ content: '❌ Could not fetch your voice channel from the cache.' });
+            }
+            
+            await musicManager.play(channel, station, ctx);
+        } catch (e) {
+            return ctx.editOrReply({ content: `❌ Error: ${e.message}` });
+        }
+    }
+}

@@ -1,227 +1,177 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const playlistService = require('../services/playlists');
-const { getVoiceChannel, getBotVoicePermissionIssue, isGuildInteraction } = require('../utils/permissions');
-const { loadSettings, canUseVoiceChannel } = require('../services/serverSettings');
+import { Command, Declare, Options, Embed, createStringOption } from 'seyfert';
+import { dbManager } from '../services/DatabaseManager.js';
+import { musicManager } from '../services/MusicManager.js';
 
-const commands = {
-  // Save current queue as playlist
-  savelist: {
-    data: new SlashCommandBuilder()
-      .setName('savelist')
-      .setDescription('Save the current queue as a personal playlist.')
-      .addStringOption(option =>
-        option.setName('name')
-          .setDescription('Playlist name (1-32 characters)')
-          .setRequired(true)
-          .setMaxLength(32)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length === 0) {
-        return interaction.reply({ content: 'The queue is empty. Nothing to save.', ephemeral: true });
-      }
-
-      const name = interaction.options.getString('name');
-      
-      // Convert DisTube songs to our playlist format
-      const songsToSave = queue.songs.map(song => ({
-        title: song.name,
-        url: song.url,
-        duration: song.duration,
-        source: song.source || 'youtube',
-        thumbnail: song.thumbnail
-      }));
-      
-      const { success, error } = await playlistService.savePlaylist(
-        interaction.user.id,
-        name,
-        songsToSave
-      );
-
-      if (!success) {
-        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
-      }
-
-      return interaction.reply('💾 Saved **' + queue.songs.length + '** songs to playlist **' + name + '**');
-    }
-  },
-
-  // Load a saved playlist
-  loadlist: {
-    data: new SlashCommandBuilder()
-      .setName('loadlist')
-      .setDescription('Load a saved playlist into the queue.')
-      .addStringOption(option =>
-        option.setName('name')
-          .setDescription('Playlist name')
-          .setRequired(true)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const voiceChannel = getVoiceChannel(interaction.member);
-      if (!voiceChannel) {
-        return interaction.reply({ content: 'You must join a voice channel first!', ephemeral: true });
-      }
-
-      // Check voice channel lock
-      if (!canUseVoiceChannel(interaction.guildId, voiceChannel.id)) {
-        const settings = loadSettings(interaction.guildId);
-        return interaction.reply({ 
-          content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
-          ephemeral: true 
-        });
-      }
-
-      const voicePermissionIssue = getBotVoicePermissionIssue(interaction.guild, voiceChannel);
-      if (voicePermissionIssue) {
-        return interaction.reply({ content: '❌ ' + voicePermissionIssue, ephemeral: true });
-      }
-
-      await interaction.deferReply();
-
-      const name = interaction.options.getString('name');
-      const { playlist, error } = await playlistService.loadPlaylist(interaction.user.id, name);
-
-      if (error) {
-        return interaction.editReply({ content: '❌ ' + error });
-      }
-
-      // Play each song URL in sequence (skip individual failures)
-      await interaction.editReply('📂 Loading playlist **' + playlist.name + '** (' + playlist.songs.length + ' songs)...');
-      
-      let loaded = 0;
-      let failed = 0;
-      for (const song of playlist.songs) {
-        try {
-          await client.distube.play(voiceChannel, song.url, {
-            textChannel: interaction.channel,
-            member: interaction.member
-          });
-          loaded++;
-        } catch (err) {
-          failed++;
-        }
-      }
-
-      if (loaded === 0) {
-        return interaction.editReply('❌ Failed to load any songs from playlist **' + playlist.name + '**');
-      }
-      const failedNote = failed > 0 ? ` (${failed} failed)` : '';
-      return interaction.editReply('✅ Loaded playlist **' + playlist.name + '** (' + loaded + ' songs)' + failedNote);
-    }
-  },
-
-  // Delete a saved playlist
-  deletelist: {
-    data: new SlashCommandBuilder()
-      .setName('deletelist')
-      .setDescription('Delete a saved playlist.')
-      .addStringOption(option =>
-        option.setName('name')
-          .setDescription('Playlist name')
-          .setRequired(true)
-      ),
-
-    async execute(interaction, client) {
-      const name = interaction.options.getString('name');
-      const { success, error } = await playlistService.deletePlaylist(interaction.user.id, name);
-
-      if (!success) {
-        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
-      }
-
-      return interaction.reply('🗑️ Deleted playlist **' + name + '**');
-    }
-  },
-
-  // List all saved playlists
-  playlists: {
-    data: new SlashCommandBuilder()
-      .setName('playlists')
-      .setDescription('List your saved playlists.'),
-
-    async execute(interaction, client) {
-      const { playlists, error } = await playlistService.listPlaylists(interaction.user.id);
-
-      if (error) {
-        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
-      }
-
-      if (playlists.length === 0) {
-        return interaction.reply({ 
-          content: 'You have no saved playlists. Use /savelist to create one!',
-          ephemeral: true 
-        });
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle('📚 Your Playlists')
-        .setColor(0x5865F2)
-        .setDescription(
-          playlists.map((p, i) => 
-            '**' + (i + 1) + '.** ' + p.name + ' — ' + p.songCount + ' songs'
-          ).join('\n')
-        )
-        .setFooter({ text: 'Use /loadlist <name> to play a playlist' });
-
-      return interaction.reply({ embeds: [embed] });
-    }
-  },
-
-  // Append current queue to existing playlist
-  appendlist: {
-    data: new SlashCommandBuilder()
-      .setName('appendlist')
-      .setDescription('Add the current queue to an existing playlist.')
-      .addStringOption(option =>
-        option.setName('name')
-          .setDescription('Playlist name')
-          .setRequired(true)
-      ),
-
-    async execute(interaction, client) {
-      if (!isGuildInteraction(interaction)) {
-        return interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      }
-
-      const queue = client.distube.getQueue(interaction.guildId);
-      if (!queue || queue.songs.length === 0) {
-        return interaction.reply({ content: 'The queue is empty.', ephemeral: true });
-      }
-
-      const name = interaction.options.getString('name');
-      
-      // Convert DisTube songs to our playlist format
-      const songsToSave = queue.songs.map(song => ({
-        title: song.name,
-        url: song.url,
-        duration: song.duration,
-        source: song.source || 'youtube',
-        thumbnail: song.thumbnail
-      }));
-      
-      const { success, error } = await playlistService.appendToPlaylist(
-        interaction.user.id,
-        name,
-        songsToSave
-      );
-
-      if (!success) {
-        return interaction.reply({ content: '❌ ' + error, ephemeral: true });
-      }
-
-      return interaction.reply('➕ Added **' + queue.songs.length + '** songs to playlist **' + name + '**');
-    }
-  }
+const nameOption = {
+    name: createStringOption({
+        description: 'Playlist name (1-32 characters)',
+        required: true
+    })
 };
 
-module.exports = commands;
+@Declare({
+    name: 'savelist',
+    description: 'Save the current queue as a personal playlist.'
+})
+@Options(nameOption)
+export class SavelistCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        if (!queue || queue.songs.length === 0) {
+            return ctx.write({ content: '❌ The queue is empty. Nothing to save.', flags: 64 });
+        }
+
+        const name = ctx.options.name;
+        // Map current queue songs to playlist format
+        const songsToSave = queue.songs.map(song => ({
+            title: song.title,
+            url: song.originalUrl,
+            duration: song.duration,
+            source: song.sourceType || 'youtube',
+            sourceUrl: song.originalUrl
+        }));
+
+        const { success, error } = dbManager.savePlaylist(ctx.member.id, name, songsToSave);
+        if (!success) {
+            return ctx.write({ content: `❌ ${error}`, flags: 64 });
+        }
+
+        return ctx.write({ content: `💾 Saved **${songsToSave.length}** songs to playlist **${name}**` });
+    }
+}
+
+@Declare({
+    name: 'loadlist',
+    description: 'Load a saved playlist into the queue.'
+})
+@Options(nameOption)
+export class LoadlistCommand extends Command {
+    async run(ctx) {
+        const voiceState = await ctx.client.cache.voiceStates?.get(ctx.member.id, ctx.guildId);
+        const voiceChannelId = voiceState?.channelId;
+        
+        if (!voiceChannelId) {
+            return ctx.write({ content: '❌ You must join a voice channel first!', flags: 64 });
+        }
+
+        // Check voice channel lock
+        const { canUseVoiceChannel, loadSettings } = await import('../services/serverSettings.js');
+        if (!canUseVoiceChannel(ctx.guildId, voiceChannelId)) {
+            const settings = loadSettings(ctx.guildId);
+            return ctx.write({ 
+                content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+                flags: 64 
+            });
+        }
+
+        await ctx.deferReply();
+
+        const name = ctx.options.name;
+        const { playlist, error } = dbManager.loadPlaylist(ctx.member.id, name);
+
+        if (error) {
+            return ctx.editOrReply({ content: `❌ ${error}` });
+        }
+
+        await ctx.editOrReply({ content: `📂 Loading playlist **${playlist.name}** (${playlist.songs.length} songs)...` });
+
+        try {
+            const channel = await ctx.client.cache.channels?.get(voiceChannelId);
+            if (!channel) {
+                return ctx.editOrReply({ content: '❌ Could not fetch your voice channel from the cache.' });
+            }
+            // Map playlist songs to play format
+            const songsToPlay = playlist.songs.map(song => ({
+                title: song.title,
+                originalUrl: song.url,
+                duration: song.duration,
+                sourceType: song.source || 'youtube'
+            }));
+
+            await musicManager.playSongs(channel, songsToPlay, ctx);
+        } catch (e) {
+            return ctx.editOrReply({ content: `❌ Error: ${e.message}` });
+        }
+    }
+}
+
+@Declare({
+    name: 'deletelist',
+    description: 'Delete a saved playlist.'
+})
+@Options(nameOption)
+export class DeletelistCommand extends Command {
+    async run(ctx) {
+        const name = ctx.options.name;
+        const { success, error } = dbManager.deletePlaylist(ctx.member.id, name);
+
+        if (!success) {
+            return ctx.write({ content: `❌ ${error}`, flags: 64 });
+        }
+
+        return ctx.write({ content: `🗑️ Deleted playlist **${name}**` });
+    }
+}
+
+@Declare({
+    name: 'playlists',
+    description: 'List your saved playlists.'
+})
+export class PlaylistsCommand extends Command {
+    async run(ctx) {
+        const { playlists, error } = dbManager.listPlaylists(ctx.member.id);
+
+        if (error) {
+            return ctx.write({ content: `❌ ${error}`, flags: 64 });
+        }
+
+        if (playlists.length === 0) {
+            return ctx.write({ 
+                content: 'You have no saved playlists. Use `/savelist` to create one!',
+                flags: 64 
+            });
+        }
+
+        const embed = new Embed()
+            .setTitle('📚 Your Playlists')
+            .setColor('#5865F2')
+            .setDescription(
+                playlists.map((p, i) => 
+                    `**${i + 1}.** ${p.name} — ${p.songCount} songs`
+                ).join('\n')
+            )
+            .setFooter({ text: 'Use /loadlist <name> to play a playlist' });
+
+        return ctx.write({ embeds: [embed] });
+    }
+}
+
+@Declare({
+    name: 'appendlist',
+    description: 'Add the current queue to an existing playlist.'
+})
+@Options(nameOption)
+export class AppendlistCommand extends Command {
+    async run(ctx) {
+        const queue = musicManager.getQueue(ctx.guildId);
+        if (!queue || queue.songs.length === 0) {
+            return ctx.write({ content: '❌ The queue is empty.', flags: 64 });
+        }
+
+        const name = ctx.options.name;
+        const songsToSave = queue.songs.map(song => ({
+            title: song.title,
+            url: song.originalUrl,
+            duration: song.duration,
+            source: song.sourceType || 'youtube',
+            sourceUrl: song.originalUrl
+        }));
+
+        const { success, error } = dbManager.appendToPlaylist(ctx.member.id, name, songsToSave);
+        if (!success) {
+            return ctx.write({ content: `❌ ${error}`, flags: 64 });
+        }
+
+        return ctx.write({ content: `➕ Added **${songsToSave.length}** songs to playlist **${name}**` });
+    }
+}

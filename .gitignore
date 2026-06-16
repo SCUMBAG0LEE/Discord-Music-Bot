@@ -146,3 +146,18 @@ dist
 package-lock.json
 bun.lock
 bun.lockb
+
+# Local SQLite databases
+*.sqlite
+*.db
+
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# General cookie files
+cookies.txt
+
+# Local scratch/playground scripts
+scratch/

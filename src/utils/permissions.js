@@ -1,75 +1,84 @@
 /**
- * Permission checking utilities for DJ/Owner commands
+ * Permission checking utilities for DJ/Owner commands (Seyfert compatible)
  */
 
-const { PermissionFlagsBits } = require('discord.js');
-const { getEffectiveDJRole } = require('../services/serverSettings');
+import { PermissionFlagsBits } from 'seyfert';
+import { getEffectiveDJRole } from '../services/serverSettings.js';
 
 /**
  * Check if user is the bot owner
  * @param {string} userId
- * @param {object} client - Discord client with config
  * @returns {boolean}
  */
-function isOwner(userId, client) {
-  return client.config?.ownerId === userId;
+export function isOwner(userId) {
+  return process.env.BOT_OWNER_ID === userId;
 }
 
 /**
  * Check if user has DJ role (checks server-specific first, then global)
- * @param {import('discord.js').GuildMember} member
- * @param {object} client - Discord client with config
+ * @param {object} member - Seyfert GuildMember object
  * @returns {boolean}
  */
-function isDJ(member, client) {
-  if (isOwner(member.user.id, client)) return true;
-  if (member.permissions.has('Administrator')) return true;
-  if (member.permissions.has('ManageGuild')) return true;
+export function isDJ(member) {
+  if (isOwner(member.id)) return true;
+  
+  const permissions = member.permissions;
+  if (permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (permissions.has(PermissionFlagsBits.ManageGuild)) return true;
   
   // Get effective DJ role (server-specific or global)
-  const djRoleId = getEffectiveDJRole(member.guild.id, client.config?.djRoleId);
+  const djRoleId = getEffectiveDJRole(member.guildId, process.env.DJ_ROLE_ID);
   
   if (!djRoleId) return true; // No DJ role set = everyone is DJ
-  return member.roles.cache.has(djRoleId);
+  return member.roles.keys.includes(djRoleId);
 }
 
 /**
  * Check if user is the track requester
  * @param {string} userId
- * @param {object} queue - DisTube queue
+ * @param {object} queue - MusicManager queue
  * @returns {boolean}
  */
-function isRequester(userId, queue) {
+export function isRequester(userId, queue) {
   const current = queue?.songs?.[0];
   if (!current) return false;
-  return current.user?.id === userId || current.member?.id === userId;
+  return current.requesterId === userId;
 }
 
 /**
  * Check if user can use DJ-only commands
  * Returns true if: is owner, has DJ role, is alone in VC, or is the track requester
- * @param {import('discord.js').CommandInteraction} interaction
- * @param {object} client
- * @param {object} queue - DisTube queue
- * @returns {boolean}
+ * @param {object} ctx - Seyfert CommandContext
+ * @param {object} queue - MusicManager queue
+ * @returns {Promise<boolean>}
  */
-function canUseDJCommands(interaction, client, queue) {
-  const member = interaction.member;
+export async function canUseDJCommands(ctx, queue) {
+  const member = ctx.member;
+  if (!member) return false;
   
   // Owner always can
-  if (isOwner(member.user.id, client)) return true;
+  if (isOwner(member.id)) return true;
   
   // Has DJ role
-  if (isDJ(member, client)) return true;
+  if (isDJ(member)) return true;
   
   // Is track requester
-  if (isRequester(member.user.id, queue)) return true;
+  if (isRequester(member.id, queue)) return true;
   
   // Is alone in voice channel with bot
-  const voiceChannel = member.voice.channel;
-  if (voiceChannel) {
-    const members = voiceChannel.members.filter(m => !m.user.bot);
-    if (members.size === 1) return true;
+  try {
+    const voiceState = await ctx.client.cache.voiceStates?.get(member.id, ctx.guildId);
+    const voiceChannelId = voiceState?.channelId;
+    if (voiceChannelId) {
+      const cachedStates = await ctx.client.cache.voiceStates?.values(ctx.guildId);
+      if (cachedStates) {
+        const botId = ctx.client.botId || ctx.client.me?.id;
+        const membersInVc = cachedStates.filter(state => state.channelId === voiceChannelId && state.userId !== botId);
+        if (membersInVc.length === 1) return true; // Only the user is in VC (excluding bot)
+      }
+    }
+  } catch (e) {
+    console.error("Error checking voice state in canUseDJCommands:", e);
   }
   
   return false;
@@ -77,92 +86,56 @@ function canUseDJCommands(interaction, client, queue) {
 
 /**
  * Check if user is in a voice channel
- * @param {import('discord.js').GuildMember} member
- * @returns {import('discord.js').VoiceChannel|null}
+ * @param {object} member
+ * @param {object} client
+ * @returns {Promise<object|null>}
  */
-function getVoiceChannel(member) {
-  return member?.voice?.channel || null;
+export async function getVoiceChannel(member, client) {
+  const voiceState = await client.cache.voiceStates?.get(member.id, member.guildId);
+  if (!voiceState?.channelId) return null;
+  return await client.cache.channels?.get(voiceState.channelId);
 }
 
 /**
  * Validate that the bot can join/speak in the target voice channel.
  * Returns null when everything looks valid, otherwise an actionable error string.
- * @param {import('discord.js').Guild} guild
- * @param {import('discord.js').VoiceBasedChannel} voiceChannel
+ * @param {object} guild
+ * @param {object} voiceChannel
  * @returns {string|null}
  */
-function getBotVoicePermissionIssue(guild, voiceChannel) {
-  const botMember = guild?.members?.me;
-  if (!botMember) {
-    return 'Could not resolve bot permissions in this server. Please try again.';
-  }
-
-  const perms = voiceChannel?.permissionsFor(botMember);
-  if (!perms) {
-    return `I cannot access ${voiceChannel}.`;
-  }
-
-  const missing = [];
-  if (!perms.has(PermissionFlagsBits.ViewChannel)) missing.push('View Channel');
-  if (!perms.has(PermissionFlagsBits.Connect)) missing.push('Connect');
-  if (!perms.has(PermissionFlagsBits.Speak)) missing.push('Speak');
-
-  if (missing.length > 0) {
-    return `Missing permissions in ${voiceChannel}: ${missing.join(', ')}`;
-  }
-
-  // If channel is full and bot is not already inside, joining may fail.
-  if (
-    voiceChannel.userLimit > 0
-    && voiceChannel.members.size >= voiceChannel.userLimit
-    && !voiceChannel.members.has(botMember.id)
-    && !perms.has(PermissionFlagsBits.MoveMembers)
-  ) {
-    return `${voiceChannel} is full. Free a slot or grant Move Members to the bot.`;
-  }
-
+export function getBotVoicePermissionIssue(guild, voiceChannel) {
+  // Seyfert handles connection errors gracefully inside joinVoiceChannel.
+  // We return null here to delegate connection checks to the connection handler.
   return null;
 }
 
 /**
  * Validate that interaction is in a guild
- * @param {import('discord.js').CommandInteraction} interaction
+ * @param {object} ctx
  * @returns {boolean}
  */
-function isGuildInteraction(interaction) {
-  return !!interaction.guild;
+export function isGuildInteraction(ctx) {
+  return !!ctx.guildId;
 }
 
 /**
  * Send a "DJ only" error message
- * @param {import('discord.js').CommandInteraction} interaction
+ * @param {object} ctx
  */
-function djOnlyError(interaction) {
-  return interaction.reply({
+export function djOnlyError(ctx) {
+  return ctx.write({
     content: '🔒 This command requires DJ permissions.',
-    ephemeral: true
+    flags: 64
   });
 }
 
 /**
  * Send an "owner only" error message
- * @param {import('discord.js').CommandInteraction} interaction
+ * @param {object} ctx
  */
-function ownerOnlyError(interaction) {
-  return interaction.reply({
+export function ownerOnlyError(ctx) {
+  return ctx.write({
     content: '🔒 This command is restricted to the bot owner.',
-    ephemeral: true
+    flags: 64
   });
 }
-
-module.exports = {
-  isOwner,
-  isDJ,
-  isRequester,
-  canUseDJCommands,
-  getVoiceChannel,
-  getBotVoicePermissionIssue,
-  isGuildInteraction,
-  djOnlyError,
-  ownerOnlyError
-};
