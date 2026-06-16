@@ -21,8 +21,11 @@ try {
     
     if (customFfmpeg) {
         const customResult = spawnSync(customFfmpeg, ['-version'], { windowsHide: true });
-        if (!customResult.error) {
+        if (!customResult.error && customResult.stdout) {
             info.command = customFfmpeg;
+            info.output = customResult.stdout.toString();
+            const match = /version\s+([^\s]+)/.exec(info.output) || /version ([^\s]+) Copyright/.exec(info.output);
+            info.version = match ? match[1] : 'unknown';
             logger.info('FFmpeg', `Using custom FFmpeg from env: ${customFfmpeg}`);
         } else {
             logger.warn('FFmpeg', `Custom FFmpeg path (${customFfmpeg}) is invalid, falling back...`);
@@ -31,11 +34,14 @@ try {
 
     if (!customFfmpeg || info.command !== customFfmpeg) {
         const result = spawnSync('ffmpeg', ['-version'], { windowsHide: true });
-        if (result.error) {
+        if (result.error || !result.stdout) {
             logger.info('FFmpeg', 'System FFmpeg not found, falling back to ffmpeg-static.');
             logger.debug('FFmpeg', `Using path: ${info.command}`);
         } else {
             info.command = 'ffmpeg';
+            info.output = result.stdout.toString();
+            const match = /version\s+([^\s]+)/.exec(info.output) || /version ([^\s]+) Copyright/.exec(info.output);
+            info.version = match ? match[1] : 'unknown';
             logger.info('FFmpeg', 'System FFmpeg found! Using it directly instead of ffmpeg-static.');
             logger.debug('FFmpeg', 'System FFmpeg generally provides better performance and streaming capabilities.');
         }
