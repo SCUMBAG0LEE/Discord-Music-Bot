@@ -1,5 +1,6 @@
 import { Command, Declare } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
+import { verifyVoiceConnection } from '../utils/permissions.js';
 
 @Declare({
     name: 'voteskip',
@@ -11,6 +12,9 @@ export class VoteSkipCommand extends Command {
         if (!queue || queue.songs.length === 0) {
             return ctx.write({ content: 'There is no music playing.', flags: 64 });
         }
+        
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         const userId = ctx.member.id;
         
@@ -24,10 +28,7 @@ export class VoteSkipCommand extends Command {
         let listeners = 1;
         try {
             const states = await ctx.client.cache.voiceStates.values(ctx.guildId);
-            // queue.channel is the voice channel ID string that was passed in play() or it's the channel object?
-            // Wait, in play(), channel was passed as the channel object or ID. Let's check:
-            // queue.channel is the voice channel object!
-            const inChannel = states.filter(vs => vs.channelId === queue.channel.id);
+            const inChannel = states.filter(vs => vs.channelId === queue.voiceChannelId);
             listeners = inChannel.length || 1;
             // Subtract the bot itself from listener count
             if (listeners > 1) listeners -= 1; 

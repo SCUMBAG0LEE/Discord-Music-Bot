@@ -38,7 +38,12 @@ export class SetAvatarCommand extends Command {
             return ctx.write({ content: '❌ Please provide an image attachment or URL.', flags: 64 });
         }
 
-        await ctx.deferReply({ flags: 64 });
+        try {
+            await ctx.deferReply({ flags: 64 });
+        } catch (e) {
+            console.warn(`[SetAvatarCommand] Failed to defer interaction:`, e.message || e);
+            return;
+        }
 
         try {
             const base64 = await getBase64Image(imageUrl);
@@ -76,7 +81,12 @@ export class SetBannerCommand extends Command {
 
         const remove = ctx.options.remove;
         if (remove) {
-            await ctx.deferReply({ flags: 64 });
+            try {
+                await ctx.deferReply({ flags: 64 });
+            } catch (e) {
+                console.warn(`[SetBannerCommand] Failed to defer interaction:`, e.message || e);
+                return;
+            }
             try {
                 await ctx.client.rest.users.editCurrentUser({ banner: null });
                 return ctx.editOrReply({ content: '✅ Banner removed!' });
@@ -94,7 +104,12 @@ export class SetBannerCommand extends Command {
             return ctx.write({ content: '❌ Please provide an image attachment, URL, or set remove: true.', flags: 64 });
         }
 
-        await ctx.deferReply({ flags: 64 });
+        try {
+            await ctx.deferReply({ flags: 64 });
+        } catch (e) {
+            console.warn(`[SetBannerCommand] Failed to defer interaction:`, e.message || e);
+            return;
+        }
 
         try {
             const base64 = await getBase64Image(imageUrl);
@@ -125,7 +140,12 @@ export class SetNameCommand extends Command {
         if (!isOwner(ctx.member.id)) return ownerOnlyError(ctx);
 
         const name = ctx.options.name;
-        await ctx.deferReply({ flags: 64 });
+        try {
+            await ctx.deferReply({ flags: 64 });
+        } catch (e) {
+            console.warn(`[SetNameCommand] Failed to defer interaction:`, e.message || e);
+            return;
+        }
 
         try {
             await ctx.client.rest.users.editCurrentUser({ username: name });
@@ -259,10 +279,10 @@ export class ShutdownCommand extends Command {
 
 // 7. Debug Command
 @Declare({
-    name: 'debug',
+    name: 'systemdebug',
     description: 'Show bot runtime diagnostics (Owner only)'
 })
-export class DebugCommand extends Command {
+export class SystemDebugCommand extends Command {
     async run(ctx) {
         if (!isOwner(ctx.member.id)) return ownerOnlyError(ctx);
 
@@ -407,3 +427,4 @@ export class LeaveServerCommand extends Command {
         }
     }
 }
+

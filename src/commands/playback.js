@@ -1,5 +1,6 @@
 import { Command, Declare, Options, createIntegerOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
+import { verifyVoiceConnection } from '../utils/permissions.js';
 
 @Declare({
     name: 'pause',
@@ -12,6 +13,9 @@ export class PauseCommand extends Command {
         if (!queue) {
             return ctx.write({ content: 'There is no music playing.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
+
         if (queue.paused) {
             return ctx.write({ content: 'Playback is already paused.', flags: 64 });
         }
@@ -32,6 +36,9 @@ export class ResumeCommand extends Command {
         if (!queue) {
             return ctx.write({ content: 'There is no active queue.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
+
         if (!queue.paused) {
             return ctx.write({ content: 'Playback is not paused.', flags: 64 });
         }
@@ -62,6 +69,8 @@ export class VolumeCommand extends Command {
         if (!queue) {
             return ctx.write({ content: 'There is no active queue.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         const level = ctx.options.level;
         musicManager.setVolume(ctx.guildId, level);

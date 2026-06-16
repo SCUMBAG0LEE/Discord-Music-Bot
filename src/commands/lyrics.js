@@ -153,7 +153,12 @@ const lyricsOptions = {
 @Options(lyricsOptions)
 export default class LyricsCommand extends Command {
     async run(ctx) {
-        await ctx.deferReply();
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[LyricsCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            return;
+        }
         
         const queue = musicManager.getQueue(ctx.guildId);
         const query = ctx.options.query;

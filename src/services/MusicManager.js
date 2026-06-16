@@ -1111,9 +1111,10 @@ export class MusicManager {
         if (!queue.stay247) {
             const timeoutSecs = parseInt(process.env.IDLE_TIMEOUT) || 60;
             if (timeoutSecs > 0) {
-                setTimeout(() => {
+                setTimeout(async () => {
                     const currentQueue = this.getQueue(guildId);
                     if (currentQueue && !currentQueue.playing) {
+                        await this.sendMessage(currentQueue, { content: '👋 Left the voice channel due to inactivity.' });
                         this.leave(guildId);
                     }
                 }, timeoutSecs * 1000);

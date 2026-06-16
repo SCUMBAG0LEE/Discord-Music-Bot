@@ -9,7 +9,12 @@ export default class SearchSelectComponent extends ComponentCommand {
     }
 
     async run(ctx) {
-        await ctx.deferReply();
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[SearchSelectComponent] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            return;
+        }
         
         const url = ctx.interaction.values[0];
         const voiceState = await ctx.client.cache.voiceStates?.get(ctx.member.id, ctx.guildId);

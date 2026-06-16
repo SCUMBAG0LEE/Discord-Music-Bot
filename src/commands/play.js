@@ -1,5 +1,6 @@
 import { Command, Declare, Options, createStringOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
+import { verifyVoiceConnection } from '../utils/permissions.js';
 
 const options = {
     query: createStringOption({
@@ -16,14 +17,16 @@ const options = {
 export default class PlayCommand extends Command {
     async run(ctx) {
         const { query } = ctx.options;
-        const voiceState = await ctx.client.cache.voiceStates?.get(ctx.member.id, ctx.guildId);
-        const voiceChannelId = voiceState?.channelId;
+        const queue = musicManager.getQueue(ctx.guildId);
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, true);
+        if (!voiceChannelId) return;
         
-        if (!voiceChannelId) {
-            return ctx.write({ content: '❌ You must join a voice channel first!', flags: 64 });
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[PlayCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            return;
         }
-        
-        await ctx.deferReply();
         
         try {
             const channel = await ctx.client.cache.channels?.get(voiceChannelId);

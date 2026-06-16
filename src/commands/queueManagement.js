@@ -1,5 +1,6 @@
 import { Command, Declare, Options, createIntegerOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
+import { verifyVoiceConnection } from '../utils/permissions.js';
 
 @Declare({
     name: 'shuffle',
@@ -12,6 +13,8 @@ export class ShuffleCommand extends Command {
         if (!queue || queue.songs.length < 2) {
             return ctx.write({ content: 'Not enough songs in the queue to shuffle.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         musicManager.shuffle(ctx.guildId);
         await ctx.write({ content: `🔀 Queue shuffled! (${queue.songs.length - 1} songs)` });
@@ -29,6 +32,8 @@ export class ClearCommand extends Command {
         if (!queue || queue.songs.length < 2) {
             return ctx.write({ content: 'Queue is already empty (only current song playing).', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         const removedCount = queue.songs.length - 1;
         musicManager.clear(ctx.guildId);
@@ -56,6 +61,8 @@ export class RemoveCommand extends Command {
         if (!queue || queue.songs.length < 2) {
             return ctx.write({ content: 'No songs available to remove.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         const index = ctx.options.index;
         if (index > queue.songs.length) {
@@ -98,6 +105,8 @@ export class MoveCommand extends Command {
         if (!queue || queue.songs.length < 3) {
             return ctx.write({ content: 'Not enough songs in the queue to move.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         const from = ctx.options.from;
         const to = ctx.options.to;
@@ -127,6 +136,8 @@ export class JumpCommand extends Command {
         if (!queue || queue.songs.length < 2) {
             return ctx.write({ content: 'There are no songs to jump to.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         const index = ctx.options.index;
         if (index > queue.songs.length) {
@@ -158,6 +169,8 @@ export class SkiptoCommand extends Command {
         if (!queue || queue.songs.length < 2) {
             return ctx.write({ content: 'There are no songs to skip to.', flags: 64 });
         }
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
         
         const position = ctx.options.position;
         if (position > queue.songs.length) {

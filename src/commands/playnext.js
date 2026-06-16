@@ -1,5 +1,6 @@
 import { Command, Declare, Options, createStringOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
+import { verifyVoiceConnection } from '../utils/permissions.js';
 
 const options = {
     query: createStringOption({
@@ -16,23 +17,16 @@ const options = {
 export default class PlayNextCommand extends Command {
     async run(ctx) {
         const { query } = ctx.options;
-        const voiceState = await ctx.client.cache.voiceStates?.get(ctx.member.id, ctx.guildId);
-        const voiceChannelId = voiceState?.channelId;
-        
-        if (!voiceChannelId) {
-            return ctx.write({ content: '❌ You must join a voice channel first!', flags: 64 });
-        }
-        
-        const { canUseVoiceChannel, loadSettings } = await import('../services/serverSettings.js');
-        if (!canUseVoiceChannel(ctx.guildId, voiceChannelId)) {
-            const settings = loadSettings(ctx.guildId);
-            return ctx.write({ 
-                content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
-                flags: 64 
-            });
-        }
+        const queue = musicManager.getQueue(ctx.guildId);
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, true);
+        if (!voiceChannelId) return;
 
-        await ctx.deferReply();
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[PlayNextCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            return;
+        }
         
         try {
             const channel = await ctx.client.cache.channels?.get(voiceChannelId);

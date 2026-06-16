@@ -1,8 +1,9 @@
-/**
- * Permission checking utilities for DJ/Owner commands (Seyfert compatible)
- */
+// Local definition of standard Discord permission bits to avoid framework export version issues
+export const PermissionFlagsBits = {
+  Administrator: 8n,
+  ManageGuild: 32n
+};
 
-import { PermissionFlagsBits } from 'seyfert';
 import { getEffectiveDJRole } from '../services/serverSettings.js';
 
 /**
@@ -23,8 +24,8 @@ export function isDJ(member) {
   if (isOwner(member.id)) return true;
   
   const permissions = member.permissions;
-  if (permissions.has(PermissionFlagsBits.Administrator)) return true;
-  if (permissions.has(PermissionFlagsBits.ManageGuild)) return true;
+  if (permissions.has([PermissionFlagsBits.Administrator])) return true;
+  if (permissions.has([PermissionFlagsBits.ManageGuild])) return true;
   
   // Get effective DJ role (server-specific or global)
   const djRoleId = getEffectiveDJRole(member.guildId, process.env.DJ_ROLE_ID);
@@ -139,3 +140,40 @@ export function ownerOnlyError(ctx) {
     flags: 64
   });
 }
+
+/**
+ * Verify user voice channel connection.
+ * @param {object} ctx - Seyfert context
+ * @param {object} queue - Active queue (optional)
+ * @param {boolean} checkLock - Whether to check server-specific VC lock settings
+ * @returns {Promise<string|null>} - Returns channelId if valid, otherwise writes error and returns null
+ */
+export async function verifyVoiceConnection(ctx, queue = null, checkLock = true) {
+  const voiceState = await ctx.client.cache.voiceStates?.get(ctx.member.id, ctx.guildId);
+  const voiceChannelId = voiceState?.channelId;
+  
+  if (!voiceChannelId) {
+    await ctx.write({ content: '❌ You must join a voice channel first!', flags: 64 });
+    return null;
+  }
+  
+  if (queue && queue.voiceChannelId && voiceChannelId !== queue.voiceChannelId) {
+    await ctx.write({ content: '❌ You must be in the same voice channel as the bot to use this command.', flags: 64 });
+    return null;
+  }
+  
+  if (checkLock) {
+    const { canUseVoiceChannel, loadSettings } = await import('../services/serverSettings.js');
+    if (!canUseVoiceChannel(ctx.guildId, voiceChannelId)) {
+      const settings = loadSettings(ctx.guildId);
+      await ctx.write({ 
+        content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
+        flags: 64 
+      });
+      return null;
+    }
+  }
+  
+  return voiceChannelId;
+}
+

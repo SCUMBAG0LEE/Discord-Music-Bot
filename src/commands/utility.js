@@ -20,7 +20,12 @@ function formatDuration(seconds) {
 export class PingCommand extends Command {
     async run(ctx) {
         const start = Date.now();
-        await ctx.deferReply();
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[PingCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            return;
+        }
         const wsPing = ctx.client.gateway.latency;
         const latency = Date.now() - start;
 

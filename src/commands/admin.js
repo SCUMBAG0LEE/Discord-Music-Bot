@@ -1,7 +1,7 @@
 import { Command, Declare, Options, Embed, createStringOption, createIntegerOption, createNumberOption, createBooleanOption, createChannelOption, createRoleOption, createUserOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
 import { loadSettings, setSetting } from '../services/serverSettings.js';
-import { isOwner, isDJ, djOnlyError } from '../utils/permissions.js';
+import { isOwner, isDJ, djOnlyError, verifyVoiceConnection } from '../utils/permissions.js';
 
 // Helper to check Administrator permissions or owner
 function isAdmin(ctx) {
@@ -36,6 +36,9 @@ export class ForceRemoveCommand extends Command {
         if (!queue || queue.songs.length <= 1) {
             return ctx.write({ content: '❌ The queue is empty or has only one song playing.', flags: 64 });
         }
+
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        if (!voiceChannelId) return;
 
         const position = ctx.options.position;
         const user = ctx.options.user;

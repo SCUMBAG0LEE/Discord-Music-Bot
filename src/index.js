@@ -1,6 +1,23 @@
 import { Client } from 'seyfert';
 import { logger } from './utils/logger.js';
 import { musicManager, voiceAdapters } from './services/MusicManager.js';
+import dns from 'dns';
+
+// Keep DNS cache warm for Discord API to prevent interaction timeouts on slow networks
+const warmDns = () => {
+    dns.lookup('discord.com', (err) => {
+        if (err && err.code !== 'ENOTFOUND') {
+            logger.error('DNS', 'Failed to pre-resolve discord.com', err);
+        }
+    });
+    dns.lookup('gateway.discord.gg', (err) => {
+        if (err && err.code !== 'ENOTFOUND') {
+            logger.error('DNS', 'Failed to pre-resolve gateway.discord.gg', err);
+        }
+    });
+};
+warmDns();
+setInterval(warmDns, 20000);
 
 const client = new Client();
 
@@ -17,9 +34,14 @@ client.commands.onFile = (file) => {
 client.start().then(async () => {
     logger.info('Bot', 'Seyfert Music Bot Started successfully!');
     
-    // Sync commands with Discord so option changes (like min_value) take effect
-    await client.uploadCommands();
-    logger.info('Bot', 'Commands synced with Discord!');
+    try {
+        await client.uploadCommands();
+        logger.info('Bot', 'Commands synced with Discord!');
+    } catch (err) {
+        logger.error('Bot', 'Upload Commands Failed');
+        console.error(JSON.stringify(err, null, 2));
+        throw err;
+    }
 
     // Inject Raw Payload Interceptor for @discordjs/voice
     const originalHandlePayload = client.gateway.options.handlePayload;
@@ -49,7 +71,7 @@ client.start().then(async () => {
                                 
                                 if (membersInVc === 0 && !queue.stay247) {
                                     await musicManager.sendMessage(queue, { content: '👋 Everyone left the voice channel! Stopping music to save resources...' });
-                                    musicManager.clear(packet.d.guild_id);
+                                    musicManager.leave(packet.d.guild_id);
                                 }
                             }
                         } catch (e) {

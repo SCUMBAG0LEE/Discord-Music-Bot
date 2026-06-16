@@ -49,7 +49,7 @@ export class AutoplayCommand extends Command {
 }
 
 @Declare({
-    name: '247',
+    name: 'stay247',
     description: 'Toggle 24/7 mode (prevent bot from leaving when queue is empty)'
 })
 export class Stay247Command extends Command {
@@ -80,16 +80,11 @@ const announceSubOptions = {
 };
 
 @Declare({
-    name: 'settings',
-    description: 'View or change music settings'
+    name: 'view',
+    description: 'View current settings'
 })
-export class SettingsCommand extends Command {
-    
-    @SubCommand({
-        name: 'view',
-        description: 'View current settings'
-    })
-    async view(ctx) {
+class SettingsViewSub extends SubCommand {
+    async run(ctx) {
         const settings = loadSettings(ctx.guildId);
         const queue = musicManager.getQueue(ctx.guildId);
         
@@ -119,13 +114,15 @@ export class SettingsCommand extends Command {
 
         return ctx.write({ embeds: [embed] });
     }
+}
 
-    @SubCommand({
-        name: 'volume',
-        description: 'Set default volume for this server'
-    })
-    @Options(volumeSubOptions)
-    async volume(ctx) {
+@Declare({
+    name: 'volume',
+    description: 'Set default volume for this server'
+})
+@Options(volumeSubOptions)
+class SettingsVolumeSub extends SubCommand {
+    async run(ctx) {
         if (!isDJ(ctx.member)) return djOnlyError(ctx);
 
         const level = ctx.options.level;
@@ -139,13 +136,15 @@ export class SettingsCommand extends Command {
         
         return ctx.write({ content: `🔊 Default volume set to **${level}%**` });
     }
+}
 
-    @SubCommand({
-        name: 'announcements',
-        description: 'Toggle now playing announcements'
-    })
-    @Options(announceSubOptions)
-    async announcements(ctx) {
+@Declare({
+    name: 'announcements',
+    description: 'Toggle now playing announcements'
+})
+@Options(announceSubOptions)
+class SettingsAnnouncementsSub extends SubCommand {
+    async run(ctx) {
         if (!isDJ(ctx.member)) return djOnlyError(ctx);
 
         const enabled = ctx.options.enabled;
@@ -156,5 +155,16 @@ export class SettingsCommand extends Command {
                 ? '📢 Now playing announcements **enabled**' 
                 : '🔇 Now playing announcements **disabled**' 
         });
+    }
+}
+
+@Declare({
+    name: 'settings',
+    description: 'View or change music settings'
+})
+@Options([SettingsViewSub, SettingsVolumeSub, SettingsAnnouncementsSub])
+export class SettingsCommand extends Command {
+    async run(ctx) {
+        // Seyfert automatically routes to subcommands based on the interaction.
     }
 }

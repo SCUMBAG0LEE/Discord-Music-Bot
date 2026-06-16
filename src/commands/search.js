@@ -2,6 +2,8 @@ import { Command, Declare, Options, createStringOption, Embed, ActionRow, String
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getYtDlpArgs } from '../utils/cookies.js';
+import { verifyVoiceConnection } from '../utils/permissions.js';
+import { musicManager } from '../services/MusicManager.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,7 +22,16 @@ const searchOptions = {
 export default class SearchCommand extends Command {
     async run(ctx) {
         const query = ctx.options.query;
-        await ctx.write({ content: '🔍 Searching...' });
+        const queue = musicManager.getQueue(ctx.guildId);
+        const voiceChannelId = await verifyVoiceConnection(ctx, queue, true);
+        if (!voiceChannelId) return;
+
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[SearchCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            return;
+        }
         
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
@@ -79,8 +90,9 @@ export default class SearchCommand extends Command {
             await ctx.editOrReply({ content: '', embeds: [embed], components: [row] });
             
         } catch (e) {
-            console.error("Search Error:", e.message);
-            return ctx.editOrReply({ content: '❌ An error occurred while searching.' });
+            console.error("Search Error:", e);
+            const errorMessage = e.message ? e.message.substring(0, 500) : 'Unknown error';
+            return ctx.editOrReply({ content: `❌ An error occurred while searching: \`${errorMessage}\`` });
         }
     }
 }
