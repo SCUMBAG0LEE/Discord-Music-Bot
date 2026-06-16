@@ -45,21 +45,37 @@ A feature-rich, ultra-high-performance Discord music bot with **YouTube, Spotify
 src/
 ├── index.js                 # Entry point & Seyfert client initialization
 ├── commands/
-│   ├── play.js              # /play - Multi-platform playback
-│   ├── search.js            # /search - Interactive YouTube search
-│   ├── queue.js             # /queue - Paginated queue display
-│   ├── skip.js              # /skip, /voteskip
-│   ├── advanced.js          # /seek, /previous, /loop, /autoplay
-│   └── favorites.js         # /like, /favorites
+│   ├── admin.js             # Server-specific admin commands (/settc, /setvc, /setdjrole, etc.)
+│   ├── advanced.js          # /seek, /previous, /replay, /radio
+│   ├── favorites.js         # /like, /favorites
+│   ├── forceplay.js         # /forceplay
+│   ├── lyrics.js            # /lyrics
+│   ├── np.js                # /np, /nowplaying (interactive now-playing UI)
+│   ├── owner.js             # Bot owner utility & evaluation commands
+│   ├── play.js              # /play
+│   ├── playback.js          # /pause, /resume
+│   ├── playlists.js         # Custom playlists (/savelist, /loadlist, /playlists, etc.)
+│   ├── playnext.js          # /playnext
+│   ├── queue.js             # /queue
+│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move
+│   ├── search.js            # /search
+│   ├── settings.js          # /settings
+│   ├── skip.js              # /skip
+│   ├── stop.js              # /stop
+│   ├── utility.js           # /help, /ping, /stats
+│   └── voteskip.js          # /voteskip
 ├── services/
-│   ├── MusicManager.js      # Native yt-dlp extraction and @discordjs/voice stream logic
-│   └── DatabaseManager.js   # bun:sqlite database controller
+│   ├── DatabaseManager.js   # bun:sqlite playlist and likes database controller
+│   ├── MusicManager.js      # Seyfert-compatible native yt-dlp extractor & stream logic
+│   └── serverSettings.js    # Per-server settings JSON storage controller
 └── utils/
-    ├── formatters.js        # Duration formatting utilities
-    ├── cookies.js           # Dynamic JSON/Netscape cookie parser
-    └── logger.js            # Colored console logging
+    ├── cookies.js           # Netscape / JSON cookie file parser
+    ├── formatters.js        # Duration formatters
+    ├── logger.js            # Console logging module
+    └── permissions.js       # DJ/Owner permission check helpers
 data/
-└── database.sqlite          # Local SQLite database
+├── database.sqlite          # Local SQLite database for likes/playlists
+└── servers/                 # Per-server JSON configuration files
 ```
 
 ## 🚀 Quick Start
