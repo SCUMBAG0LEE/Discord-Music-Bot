@@ -84,8 +84,7 @@ data/
 
 - **Bun** (latest version) - Required for Seyfert
 - **FFmpeg** — Required for audio processing
-- **yt-dlp** — Required for metadata extraction
-- **yt-dlp** — Required for YouTube playback
+- **yt-dlp** — Required for metadata extraction & YouTube playback
   ```bash
   # Ubuntu/Debian
   sudo apt install ffmpeg
