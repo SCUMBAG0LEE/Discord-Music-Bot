@@ -7,11 +7,42 @@ import {
     getVoiceConnection,
     StreamType
 } from '@discordjs/voice';
-import { execFile, spawn } from 'child_process';
+import { execFile, spawn, spawnSync } from 'child_process';
 import prism from 'prism-media';
 import { promisify } from 'util';
 import { getYtDlpArgs } from '../utils/cookies.js';
 import { loadSettings } from './serverSettings.js';
+import { logger } from '../utils/logger.js';
+
+// Configure FFmpeg resolution
+try {
+    const customFfmpeg = process.env.FFMPEG_PATH;
+    const info = prism.FFmpeg.getInfo();
+    
+    if (customFfmpeg) {
+        const customResult = spawnSync(customFfmpeg, ['-version'], { windowsHide: true });
+        if (!customResult.error) {
+            info.command = customFfmpeg;
+            logger.info('FFmpeg', `Using custom FFmpeg from env: ${customFfmpeg}`);
+        } else {
+            logger.warn('FFmpeg', `Custom FFmpeg path (${customFfmpeg}) is invalid, falling back...`);
+        }
+    }
+
+    if (!customFfmpeg || info.command !== customFfmpeg) {
+        const result = spawnSync('ffmpeg', ['-version'], { windowsHide: true });
+        if (result.error) {
+            logger.info('FFmpeg', 'System FFmpeg not found, falling back to ffmpeg-static.');
+            logger.debug('FFmpeg', `Using path: ${info.command}`);
+        } else {
+            info.command = 'ffmpeg';
+            logger.info('FFmpeg', 'System FFmpeg found! Using it directly instead of ffmpeg-static.');
+            logger.debug('FFmpeg', 'System FFmpeg generally provides better performance and streaming capabilities.');
+        }
+    }
+} catch (e) {
+    logger.error('FFmpeg', 'Error configuring FFmpeg path, using fallback.');
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -1011,7 +1042,7 @@ export class MusicManager {
                 '-user_agent', userAgent,
                 '-i', streamUrl,
                 '-analyzeduration', '0',
-                '-loglevel', '0',
+                '-loglevel', 'warning',
                 '-f', 's16le',
                 '-ar', '48000',
                 '-ac', '2'
@@ -1019,9 +1050,9 @@ export class MusicManager {
 
             const ffmpegProcess = new prism.FFmpeg({ args: ffmpegArgs });
             
-            ffmpegProcess.process.on('error', err => console.error('[FFmpeg Process Error]', err));
-            ffmpegProcess.process.stderr.on('data', data => console.log('[FFmpeg STDERR]', data.toString()));
-            ffmpegProcess.process.on('exit', code => console.log('[FFmpeg Exit Code]', code));
+            ffmpegProcess.process.on('error', err => logger.error('FFmpeg', 'Process Error', err));
+            ffmpegProcess.process.stderr.on('data', data => logger.debug('FFmpeg', `STDERR: ${data.toString().trim()}`));
+            ffmpegProcess.process.on('exit', code => logger.debug('FFmpeg', `Process exited with code ${code}`));
             
             if (queue.ytdlpProcess) {
                 // Destroy previous stream if it exists

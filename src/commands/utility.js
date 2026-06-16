@@ -1,7 +1,11 @@
 import { Command, Declare, Embed, Options, createStringOption } from 'seyfert';
 import os from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { musicManager } from '../services/MusicManager.js';
 import { getVoiceConnection } from '@discordjs/voice';
+
+const execFileAsync = promisify(execFile);
 
 function formatDuration(seconds) {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -48,8 +52,36 @@ export class PingCommand extends Command {
 })
 export class StatsCommand extends Command {
     async run(ctx) {
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[StatsCommand] Failed to defer:`, e.message || e);
+            return;
+        }
+
         const uptime = formatDuration(Math.floor(process.uptime()));
         const memUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+        
+        let ffmpegInfo = 'Unknown';
+        let ffmpegVersion = 'Unknown';
+        try {
+            const prism = await import('prism-media');
+            const info = prism.default?.FFmpeg?.getInfo() || prism.FFmpeg?.getInfo();
+            const cmd = info?.command || 'Unknown';
+            ffmpegVersion = info?.version?.split(' ')[0] || 'Unknown';
+            if (cmd.includes('ffmpeg-static')) ffmpegInfo = 'ffmpeg-static';
+            else if (cmd === process.env.FFMPEG_PATH) ffmpegInfo = 'custom';
+            else ffmpegInfo = 'system ffmpeg';
+        } catch(e) {}
+
+        let ytdlpVersion = 'Unknown';
+        try {
+            const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+            const { stdout } = await execFileAsync(ytdlpPath, ['--version']);
+            ytdlpVersion = stdout.trim();
+        } catch(e) {
+            ytdlpVersion = 'Error';
+        }
 
         const embed = new Embed()
             .setTitle('📊 Bot Statistics')
@@ -58,11 +90,13 @@ export class StatsCommand extends Command {
                 { name: '⏱️ Uptime', value: uptime, inline: true },
                 { name: '💾 Memory', value: `${memUsage} MB`, inline: true },
                 { name: '📡 Runtime', value: typeof Bun !== 'undefined' ? `Bun v${Bun.version}` : `Node ${process.version}`, inline: true },
-                { name: '💻 Platform', value: `${os.platform()} ${os.arch()}`, inline: true }
+                { name: '💻 Platform', value: `${os.platform()} ${os.arch()}`, inline: true },
+                { name: '🎵 FFmpeg', value: `${ffmpegInfo}\n(v${ffmpegVersion})`, inline: true },
+                { name: '📥 yt-dlp', value: `v${ytdlpVersion}`, inline: true }
             )
             .setFooter({ text: 'Powered by Seyfert' });
 
-        await ctx.write({ embeds: [embed] });
+        await ctx.editOrReply({ embeds: [embed] });
     }
 }
 
@@ -72,11 +106,34 @@ export class StatsCommand extends Command {
 })
 export class DebugCommand extends Command {
     async run(ctx) {
+        try {
+            await ctx.deferReply();
+        } catch (e) {
+            console.warn(`[DebugCommand] Failed to defer:`, e.message || e);
+            return;
+        }
+
         const queue = musicManager.getQueue(ctx.guildId);
         const connection = getVoiceConnection(ctx.guildId);
 
         let debugInfo = `**Shard ID:** ${ctx.shardId}\n`;
         debugInfo += `**Gateway Ping:** ${ctx.client.gateway.latency}ms\n\n`;
+        
+        try {
+            const prism = await import('prism-media');
+            const info = prism.default?.FFmpeg?.getInfo() || prism.FFmpeg?.getInfo();
+            const ffmpegCommand = info?.command || 'Unknown';
+            const ffmpegVersion = info?.version?.split(' ')[0] || 'Unknown';
+            debugInfo += `**FFmpeg Path:** \`${ffmpegCommand}\`\n**FFmpeg Version:** \`${ffmpegVersion}\`\n`;
+        } catch(e) {}
+
+        try {
+            const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+            const { stdout } = await execFileAsync(ytdlpPath, ['--version']);
+            debugInfo += `**yt-dlp Path:** \`${ytdlpPath}\`\n**yt-dlp Version:** \`${stdout.trim()}\`\n\n`;
+        } catch(e) {
+            debugInfo += `**yt-dlp Path:** \`${process.env.YTDLP_PATH || 'yt-dlp'}\`\n**yt-dlp Version:** \`Error/Not Found\`\n\n`;
+        }
 
         if (queue && connection) {
             debugInfo += `**Voice Connection:** ${connection.state.status}\n`;
@@ -96,7 +153,7 @@ export class DebugCommand extends Command {
             .setDescription(debugInfo)
             .setColor('#ED4245');
 
-        await ctx.write({ embeds: [embed] });
+        await ctx.editOrReply({ embeds: [embed] });
     }
 }
 
