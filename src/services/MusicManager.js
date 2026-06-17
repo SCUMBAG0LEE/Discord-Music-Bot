@@ -5,7 +5,8 @@ import {
     AudioPlayerStatus,
     VoiceConnectionStatus,
     getVoiceConnection,
-    StreamType
+    StreamType,
+    entersState
 } from '@discordjs/voice';
 import { execFile, spawn, spawnSync } from 'child_process';
 import prism from 'prism-media';
@@ -429,7 +430,7 @@ async function fetchAppleMusicTracks(url) {
 
 async function fetchYtDlpPlaylistTracks(url) {
     const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-    const args = getYtDlpArgs(['-j', '--flat-playlist', '--no-warnings', url]);
+    const args = getYtDlpArgs(['-j', '--flat-playlist', '--socket-timeout', '15', '--no-warnings', url]);
     const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 50 });
     const lines = stdout.trim().split('\n').filter(Boolean);
     
@@ -444,7 +445,8 @@ async function fetchYtDlpPlaylistTracks(url) {
             title: data.title || 'Unknown Track',
             originalUrl: data.url || `https://www.youtube.com/watch?v=${data.id}`,
             duration,
-            sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : 'youtube'
+            sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : 'youtube',
+            _ytDlpData: data
         };
     });
 
@@ -551,7 +553,7 @@ async function getTrackInfo(query, searchPrefix = '') {
     const target = isUrl ? query : `${searchPrefix}${query}`;
     
     try {
-        const args = getYtDlpArgs(['-j', '--no-warnings', target]);
+        const args = getYtDlpArgs(['-j', '-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '--socket-timeout', '15', '--no-warnings', target]);
         const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
         const lines = stdout.trim().split('\n').filter(Boolean);
         if (lines.length === 0) throw new Error("No data returned from yt-dlp.");
@@ -563,7 +565,8 @@ async function getTrackInfo(query, searchPrefix = '') {
             originalUrl: data.webpage_url || target,
             durationInSec: data.duration,
             durationRaw: data.duration ? `${Math.floor(data.duration / 60)}:${(data.duration % 60).toString().padStart(2, '0')}` : 'Live/Unknown',
-            sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other')
+            sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other'),
+            _ytDlpData: data
         };
     } catch (e) {
         throw new Error(`Failed to extract track info: ${e.message}`);
@@ -777,6 +780,16 @@ export class MusicManager {
         const player = createAudioPlayer();
         const connection = await this.joinChannel(channel);
 
+        // Wait for the connection to be ready before proceeding to prevent race conditions.
+        try {
+            await entersState(connection, VoiceConnectionStatus.Ready, 30_000); // 30s timeout
+        } catch (error) {
+            logger.error('VoiceConnection', `Connection failed to enter Ready state within 30s for guild ${guildId}`, error);
+            connection.destroy();
+            this.queues.delete(guildId);
+            throw new Error('Could not connect to the voice channel in time.');
+        }
+
         queue = {
             guildId,
             voiceChannel: channel,
@@ -896,6 +909,7 @@ export class MusicManager {
                 originalUrl: s.originalUrl,
                 duration: s.duration,
                 sourceType: s.sourceType || 'youtube',
+                _ytDlpData: s._ytDlpData || null,
                 fallbackStage: 0,
                 requesterId: textChannel.member?.id,
                 requesterName: textChannel.member?.username || 'Unknown'
@@ -967,6 +981,7 @@ export class MusicManager {
             originalUrl: trackInfo.originalUrl,
             duration: trackInfo.durationRaw,
             sourceType: trackInfo.sourceType,
+            _ytDlpData: trackInfo._ytDlpData || null,
             fallbackStage: 0,
             requesterId: textChannel.member?.id,
             requesterName: textChannel.member?.username || 'Unknown'
@@ -1009,7 +1024,7 @@ export class MusicManager {
         
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-            const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--no-warnings', nextSong.originalUrl]);
+            const ytdlpArgs = getYtDlpArgs(['-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--socket-timeout', '15', '--no-warnings', nextSong.originalUrl]);
             const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
             
             // Log any errors from the prefetch process to help debug failures
@@ -1040,6 +1055,26 @@ export class MusicManager {
         
         if (!song) {
             return this.handleQueueEnd(guildId, queue);
+        }
+
+        // Ensure we have full track metadata, especially for items from proxied playlists (Spotify, etc.)
+        if (!song._ytDlpData && !song.isRadio && song.sourceType !== 'radio') {
+            try {
+                logger.info('MusicManager', `Fetching full track info for "${song.title}" as it was missing.`);
+                const trackInfo = await getTrackInfo(song.originalUrl);
+                // Update the song object in the queue with the full data
+                Object.assign(song, {
+                    title: trackInfo.title,
+                    originalUrl: trackInfo.originalUrl,
+                    duration: trackInfo.durationRaw,
+                    sourceType: trackInfo.sourceType,
+                    _ytDlpData: trackInfo._ytDlpData
+                });
+            } catch (e) {
+                logger.error('MusicManager', `Failed to fetch missing track info for "${song.title}". Skipping.`, e);
+                queue.songs.shift();
+                return this.playNext(guildId);
+            }
         }
 
         try {
@@ -1080,7 +1115,7 @@ export class MusicManager {
                     tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
                     queue.tempFilePath = tempFilePath;
                     
-                    const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--no-warnings', song.originalUrl]);
+                    const ytdlpArgs = getYtDlpArgs(['-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--socket-timeout', '15', '--no-warnings', song.originalUrl]);
                     const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
                     queue.ytdlpChildProcess = ytdlpChildProcess;
 
@@ -1088,9 +1123,24 @@ export class MusicManager {
                     ytdlpChildProcess.stderr.on('data', (data) => {
                         logger.error('yt-dlp', `[${song.title}] STDERR: ${data.toString().trim()}`);
                     });
-                    
-                    // Wait for the download to buffer a bit
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+                
+                // Wait for yt-dlp to create the file and buffer enough data for FFmpeg to probe
+                let waitTime = 0;
+                while (waitTime < 15000) { // Max 15 seconds wait
+                    if (fs.existsSync(tempFilePath)) {
+                        try {
+                            const stats = fs.statSync(tempFilePath);
+                            if (stats.size > 1024) { // Wait for at least 1KB
+                                break;
+                            }
+                        } catch(e) {}
+                    }
+                    if (queue.ytdlpChildProcess && queue.ytdlpChildProcess.exitCode !== null) {
+                        break; // Process exited (either finished fast or failed)
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    waitTime += 500;
                 }
 
                 // Optimized FFmpeg pipeline for native hardware-aligned instructions (Stereo, 48000Hz PCM/Opus)
@@ -1285,6 +1335,7 @@ export class MusicManager {
                 originalUrl: t.originalUrl,
                 duration: t.durationRaw || t.duration,
                 sourceType: t.sourceType || 'youtube',
+                _ytDlpData: t._ytDlpData || null,
                 fallbackStage: 0,
                 requesterId: textChannel.member?.id,
                 requesterName: textChannel.member?.username || 'Unknown'
@@ -1308,6 +1359,7 @@ export class MusicManager {
             originalUrl: trackInfo.originalUrl,
             duration: trackInfo.durationRaw,
             sourceType: trackInfo.sourceType,
+            _ytDlpData: trackInfo._ytDlpData || null,
             fallbackStage: 0,
             requesterId: textChannel.member?.id,
             requesterName: textChannel.member?.username || 'Unknown'
@@ -1359,6 +1411,7 @@ export class MusicManager {
                 originalUrl: t.originalUrl,
                 duration: t.durationRaw || t.duration,
                 sourceType: t.sourceType || 'youtube',
+                _ytDlpData: t._ytDlpData || null,
                 fallbackStage: 0,
                 requesterId: textChannel.member?.id,
                 requesterName: textChannel.member?.username || 'Unknown'
@@ -1379,6 +1432,7 @@ export class MusicManager {
             originalUrl: trackInfo.originalUrl,
             duration: trackInfo.durationRaw,
             sourceType: trackInfo.sourceType,
+            _ytDlpData: trackInfo._ytDlpData || null,
             fallbackStage: 0,
             requesterId: textChannel.member?.id,
             requesterName: textChannel.member?.username || 'Unknown'

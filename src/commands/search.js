@@ -37,7 +37,7 @@ export default class SearchCommand extends Command {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
             
             // Use --flat-playlist so yt-dlp only fetches basic metadata (instantly) instead of the entire formats array
-            const args = getYtDlpArgs(['-j', '--flat-playlist', '--no-warnings', `ytsearch10:${query}`]);
+            const args = getYtDlpArgs(['-j', '--flat-playlist', '--socket-timeout', '15', '--no-warnings', `ytsearch10:${query}`]);
             
             // Search 10 results and output JSON with increased maxBuffer
             const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });

@@ -130,6 +130,17 @@ export class DebugCommand extends Command {
             debugInfo += `**Paused:** ${queue.paused ? 'Yes' : 'No'}\n`;
             debugInfo += `**Process Stream:** ${queue.ytdlpProcess ? 'Active' : 'None'}\n`;
             debugInfo += `**Resource:** ${queue.resource ? 'Active' : 'None'}\n`;
+
+            const currentSong = queue.songs[0];
+            if (currentSong && currentSong._ytDlpData) {
+                const streamData = currentSong._ytDlpData;
+                debugInfo += `\n**Stream Info:**\n`;
+                debugInfo += `> **Codec:** \`${streamData.acodec || 'N/A'}\`\n`;
+                debugInfo += `> **Bitrate:** \`${streamData.abr ? `${streamData.abr.toFixed(2)} kbps` : 'N/A'}\`\n`;
+                debugInfo += `> **Sample Rate:** \`${streamData.asr ? `${streamData.asr} Hz` : 'N/A'}\`\n`;
+                debugInfo += `> **Format:** \`${streamData.format_id || 'N/A'} (${streamData.ext || 'N/A'})\`\n`;
+                debugInfo += `> **Protocol:** \`${streamData.protocol || 'N/A'}\`\n`;
+            }
         } else {
             debugInfo += `**Voice Connection:** None\n`;
             debugInfo += `**Queue:** Not initialized\n`;
