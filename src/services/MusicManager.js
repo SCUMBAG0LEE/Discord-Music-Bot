@@ -15,6 +15,8 @@ import { loadSettings } from './serverSettings.js';
 import { logger } from '../utils/logger.js';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
+import os from 'os';
+import path from 'path';
 
 // Configure FFmpeg resolution
 try {
@@ -1024,8 +1026,6 @@ export class MusicManager {
         }
         
         nextSong.isPrefetching = true;
-        const os = require('os');
-        const path = require('path');
         const tempFilePath = path.join(os.tmpdir(), `discord_music_prefetch_${guildId}_${Date.now()}.audio`);
         
         try {
@@ -1090,9 +1090,6 @@ export class MusicManager {
 
             if (!isDirectRadioStream) {
                 // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
-                const os = require('os');
-                const path = require('path');
-                
                 if (song.prefetchFilePath) {
                     // Use the already background-prefetched file (HDD read optimization)
                     logger.info('Prefetch', `Using prefetched audio file for: ${song.title}`);
