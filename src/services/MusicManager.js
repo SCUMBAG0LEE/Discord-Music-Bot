@@ -18,49 +18,80 @@ import { promises as fsPromises } from 'fs';
 import os from 'os';
 import path from 'path';
 
-// Configure FFmpeg resolution
+export let ffmpegInfo = {
+    type: 'unknown',
+    path: 'unknown',
+    version: 'unknown',
+};
+
+// Hardware Optimization Evaluator
+export const hardwareOptimization = (() => {
+    const totalRamGB = os.totalmem() / 1024 / 1024 / 1024;
+    const cpuCores = os.cpus().length;
+    const diskType = process.env.SYSTEM_DISK_TYPE?.toLowerCase() || 'auto';
+    
+    let bufferSizeMB = 8;
+    if (process.env.STREAM_BUFFER_SIZE) {
+        bufferSizeMB = parseInt(process.env.STREAM_BUFFER_SIZE);
+    } else if (diskType === 'ssd' || diskType === 'nvme') {
+        bufferSizeMB = 2; // Fast random writes, smaller buffer needed (saves RAM)
+    } else if (diskType === 'hdd') {
+        bufferSizeMB = 16; // Minimize HDD head thrashing with larger sequential chunks
+    } else {
+        bufferSizeMB = totalRamGB >= 8 ? 16 : 8; // Auto guess based on Total RAM
+    }
+
+    let threads = process.env.FFMPEG_THREADS?.toLowerCase() || 'auto';
+    if (threads === 'auto') {
+        threads = cpuCores <= 4 ? '1' : '2'; // Audio transcoding doesn't scale well past 2 threads
+    }
+
+    logger.info('Optimization', `Profile applied: ${threads} FFmpeg threads | ${bufferSizeMB}MB Stream Buffer | Disk: ${diskType} | Cores: ${cpuCores} | RAM: ${totalRamGB.toFixed(1)}GB`);
+
+    return {
+        threads: threads.toString(),
+        bufferSize: bufferSizeMB * 1024 * 1024,
+        bufferSizeMB,
+        diskType
+    };
+})();
+
+// Configure FFmpeg path and version safely without mutating imported modules.
+// This makes the info available to other parts of the bot, like the /stats command.
 try {
     const customFfmpeg = process.env.FFMPEG_PATH;
-    const FFmpegClass = prism.default?.FFmpeg || prism.FFmpeg;
-    const info = FFmpegClass.getInfo();
+    let result;
     
     if (customFfmpeg) {
-        const customResult = spawnSync(customFfmpeg, ['-version'], { windowsHide: true });
-        if (!customResult.error && customResult.stdout) {
-            const output = customResult.stdout.toString();
-            const match = /version\s+([^\s]+)/.exec(output) || /version ([^\s]+) Copyright/.exec(output);
-            const version = match ? match[1] : 'unknown';
-            
-            FFmpegClass.getInfo = () => ({
-                command: customFfmpeg,
-                output,
-                version
-            });
+        result = spawnSync(customFfmpeg, ['-version'], { windowsHide: true });
+        if (!result.error && result.stdout) {
+            ffmpegInfo.type = 'custom';
+            ffmpegInfo.path = customFfmpeg;
             logger.info('FFmpeg', `Using custom FFmpeg from env: ${customFfmpeg}`);
         } else {
             logger.warn('FFmpeg', `Custom FFmpeg path (${customFfmpeg}) is invalid, falling back...`);
         }
     }
 
-    if (!customFfmpeg || info.command !== customFfmpeg) {
-        const result = spawnSync('ffmpeg', ['-version'], { windowsHide: true });
-        if (result.error || !result.stdout) {
-            logger.info('FFmpeg', 'System FFmpeg not found, falling back to ffmpeg-static.');
-            logger.debug('FFmpeg', `Using path: ${info.command}`);
-        } else {
-            const output = result.stdout.toString();
-            const match = /version\s+([^\s]+)/.exec(output) || /version ([^\s]+) Copyright/.exec(output);
-            const version = match ? match[1] : 'unknown';
-            
-            FFmpegClass.getInfo = () => ({
-                command: 'ffmpeg',
-                output,
-                version
-            });
+    if (!ffmpegInfo.path) { // If custom path was not valid or not provided
+        result = spawnSync('ffmpeg', ['-version'], { windowsHide: true });
+        if (!result.error && result.stdout) {
+            ffmpegInfo.type = 'system ffmpeg';
+            ffmpegInfo.path = 'ffmpeg';
             logger.info('FFmpeg', 'System FFmpeg found! Using it directly instead of ffmpeg-static.');
-            logger.debug('FFmpeg', 'System FFmpeg generally provides better performance and streaming capabilities.');
+        } else {
+            const staticInfo = (prism.default?.FFmpeg || prism.FFmpeg).getInfo();
+            ffmpegInfo.type = 'ffmpeg-static';
+            ffmpegInfo.path = staticInfo.command;
+            result = { stdout: staticInfo.output }; // Use static's output for version parsing
+            logger.info('FFmpeg', 'System FFmpeg not found, falling back to ffmpeg-static.');
         }
     }
+
+    const output = result.stdout.toString();
+    const match = /version\s+([^\s]+)/.exec(output) || /version ([^\s]+) Copyright/.exec(output);
+    ffmpegInfo.version = match ? match[1].replace(/-\w+$/, '') : 'unknown'; // Clean version string
+    logger.debug('FFmpeg', `Detected Version: ${ffmpegInfo.version}`);
 } catch (e) {
     logger.error('FFmpeg', 'Error configuring FFmpeg path, using fallback.', e);
 }
@@ -179,11 +210,28 @@ async function fetchSpotifyTracks(url) {
 
 let cachedAppleToken = null;
 let appleTokenExpiry = 0;
+let isFetchingAppleToken = false;
 
 async function getAppleMusicToken() {
     if (cachedAppleToken && Date.now() < appleTokenExpiry) {
         return cachedAppleToken;
     }
+
+    // Simple lock to prevent a race condition where multiple requests fetch the token simultaneously.
+    if (isFetchingAppleToken) {
+        await new Promise(resolve => {
+            const interval = setInterval(() => {
+                if (!isFetchingAppleToken) {
+                    clearInterval(interval);
+                    resolve();
+                }
+            }, 100);
+        });
+        return getAppleMusicToken(); // Re-check after waiting
+    }
+
+    isFetchingAppleToken = true;
+    try {
     const mainPageRes = await fetch('https://music.apple.com/us/browse', {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -229,6 +277,9 @@ async function getAppleMusicToken() {
     }
     cachedAppleToken = token;
     return cachedAppleToken;
+    } finally {
+        isFetchingAppleToken = false;
+    }
 }
 
 async function resolveUrlRedirects(url) {
@@ -547,6 +598,21 @@ export class MusicManager {
         this.queues = new Map();
     }
 
+    _cleanupSong(song) {
+        if (!song) return;
+        // Clean up the prefetch process if it's still running
+        if (song.prefetchProcess) {
+            song.prefetchProcess.kill();
+            song.prefetchProcess = null;
+            logger.debug('Prefetch', `Killed prefetch process for: ${song.title}`);
+        }
+        // Clean up the temporary file from prefetching
+        if (song.prefetchFilePath) {
+            fsPromises.unlink(song.prefetchFilePath).catch(err => logger.warn('Prefetch', `Failed to delete prefetch file ${song.prefetchFilePath}: ${err.message}`));
+            song.prefetchFilePath = null;
+        }
+    }
+
     async sendMessage(queue, options) {
         try {
             if (queue.client && queue.textChannelId) {
@@ -636,26 +702,46 @@ export class MusicManager {
     shuffle(guildId) {
         const queue = this.getQueue(guildId);
         if (queue && queue.songs.length > 1) {
+            // Clean up all existing prefetches since the order is changing
+            for (let i = 1; i < queue.songs.length; i++) {
+                this._cleanupSong(queue.songs[i]);
+            }
+
             const current = queue.songs.shift();
             for (let i = queue.songs.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [queue.songs[i], queue.songs[j]] = [queue.songs[j], queue.songs[i]];
             }
             queue.songs.unshift(current);
+
+            // Prefetch the new next song
+            if (queue.songs.length > 1) {
+                this.prefetchNextTrack(guildId, queue.songs[1]);
+            }
         }
     }
 
     clear(guildId) {
         const queue = this.getQueue(guildId);
         if (queue && queue.songs.length > 1) {
-            queue.songs.splice(1);
+            const removed = queue.songs.splice(1);
+            for (const song of removed) {
+                this._cleanupSong(song);
+            }
         }
     }
 
     remove(guildId, index) {
         const queue = this.getQueue(guildId);
         if (queue && index > 0 && index < queue.songs.length) {
-            return queue.songs.splice(index, 1)[0];
+            const [removedSong] = queue.songs.splice(index, 1);
+            this._cleanupSong(removedSong);
+
+            // If we removed the song that was next, prefetch the new next one
+            if (index === 1 && queue.songs.length > 1) {
+                this.prefetchNextTrack(guildId, queue.songs[1]);
+            }
+            return removedSong;
         }
         return null;
     }
@@ -663,133 +749,144 @@ export class MusicManager {
     move(guildId, from, to) {
         const queue = this.getQueue(guildId);
         if (queue && from > 0 && from < queue.songs.length && to > 0 && to < queue.songs.length) {
+            // Clean up prefetch for the song that was at the "next" position, as it might change
+            if (queue.songs[1]) {
+                this._cleanupSong(queue.songs[1]);
+            }
+
             const [song] = queue.songs.splice(from, 1);
             queue.songs.splice(to, 0, song);
+
+            // Prefetch the new next song
+            if (queue.songs.length > 1) {
+                this.prefetchNextTrack(guildId, queue.songs[1]);
+            }
             return song;
         }
         return null;
     }
 
+    async _ensureQueue(channel, textChannel) {
+        const guildId = channel.guildId;
+        let queue = this.getQueue(guildId);
+
+        if (queue) {
+            return queue;
+        }
+
+        const player = createAudioPlayer();
+        const connection = await this.joinChannel(channel);
+
+        queue = {
+            guildId,
+            voiceChannel: channel,
+            voiceChannelId: channel.id,
+            textChannelId: textChannel.channelId,
+            client: channel.client,
+            connection,
+            player,
+            songs: [],
+            history: [],
+            skipVotes: new Set(),
+            playing: false,
+            paused: false,
+            volume: parseInt(process.env.DEFAULT_VOLUME) || 100,
+            loopMode: 0, // 0 = off, 1 = song, 2 = queue
+            autoplay: false,
+            stay247: process.env.STAY_IN_CHANNEL === 'true',
+            isSeeking: false,
+            seekOffset: 0,
+            ignoreLoopOnce: false
+        };
+        this.queues.set(guildId, queue);
+
+        connection.on('stateChange', (oldState, newState) => {
+            console.log(`[VoiceConnection] ${oldState.status} -> ${newState.status}`);
+        });
+        connection.on('error', err => console.error('[VoiceConnection Error]', err));
+
+        player.on('stateChange', (oldState, newState) => {
+            console.log(`[AudioPlayer] ${oldState.status} -> ${newState.status}`);
+        });
+        player.on('error', err => console.error('[AudioPlayer Error]', err));
+
+        connection.subscribe(player);
+
+        player.on(AudioPlayerStatus.Idle, async () => {
+            if (queue.ytdlpProcess) {
+                if (typeof queue.ytdlpProcess.destroy === 'function') queue.ytdlpProcess.destroy();
+                if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();
+                queue.ytdlpProcess = null;
+            }
+            if (queue.isSeeking) {
+                queue.isSeeking = false;
+                this.playNext(guildId);
+            } else {
+                const currentSong = queue.songs[0];
+                if (currentSong) {
+                    queue.history.push(currentSong);
+                    if (queue.history.length > 50) queue.history.shift();
+                    
+                    if (queue.loopMode === 1 && !queue.ignoreLoopOnce) {
+                        // Song loop, do not shift
+                    } else if (queue.loopMode === 2) {
+                        if (queue.ignoreLoopOnce) queue.ignoreLoopOnce = false;
+                        // Queue loop
+                        queue.songs.shift();
+                        queue.songs.push(currentSong);
+                    } else {
+                        if (queue.ignoreLoopOnce) queue.ignoreLoopOnce = false;
+                        // Normal
+                        queue.songs.shift();
+                    }
+                }
+                
+                if (queue.songs.length > 0) {
+                    this.playNext(guildId);
+                } else if (queue.autoplay && currentSong) {
+                    try {
+                        const relatedTitle = currentSong.title.replace(/[^\w\s]/gi, '').split(' ').slice(0, 4).join(' ');
+                        const info = await getTrackInfo(`${relatedTitle} mix`);
+                        
+                        if (info && info.title) {
+                            queue.songs.push({ title: info.title, url: info.originalUrl, duration: info.durationRaw, uploader: 'Autoplay' });
+                            this.playNext(guildId);
+                        } else { this.handleQueueEnd(guildId, queue); }
+                    } catch (e) { this.handleQueueEnd(guildId, queue); }
+                } else { this.handleQueueEnd(guildId, queue); }
+            }
+        });
+
+        player.on('error', error => {
+            console.error(`Audio error: ${error.message}`);
+            queue.songs.shift();
+            this.playNext(guildId);
+        });
+
+        return queue;
+    }
+
     jump(guildId, index) {
         const queue = this.getQueue(guildId);
         if (queue && index > 0 && index < queue.songs.length) {
-            queue.songs.splice(1, index - 1);
+            const removed = queue.songs.splice(1, index - 1);
+            for (const song of removed) {
+                this._cleanupSong(song);
+            }
             queue.player.stop(); // Stops current song, triggers Idle which calls playNext
         }
     }
 
     async playSongs(channel, songs, textChannel) {
         let guildId = channel.guildId;
-        let queue = this.getQueue(guildId);
-        
-        if (queue) {
-            const maxQueue = parseInt(process.env.MAX_QUEUE_SIZE) || 0;
-            if (maxQueue > 0 && queue.songs.length >= maxQueue) {
-                return textChannel?.write({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
-            }
-        }
-        
-        if (!queue) {
-            const player = createAudioPlayer();
-            const connection = await this.joinChannel(channel);
-
-            queue = {
-                guildId,
-                voiceChannel: channel,
-                voiceChannelId: channel.id,
-                textChannelId: textChannel.channelId,
-                client: channel.client,
-                connection,
-                player,
-                songs: [],
-                history: [],
-                skipVotes: new Set(),
-                playing: false,
-                paused: false,
-                volume: parseInt(process.env.DEFAULT_VOLUME) || 100,
-                loopMode: 0,
-                autoplay: false,
-                stay247: process.env.STAY_IN_CHANNEL === 'true',
-                isSeeking: false,
-                seekOffset: 0
-            };
-            this.queues.set(guildId, queue);
-
-            connection.on('stateChange', (oldState, newState) => {
-                console.log(`[VoiceConnection] ${oldState.status} -> ${newState.status}`);
-            });
-            connection.on('error', err => console.error('[VoiceConnection Error]', err));
-
-            player.on('stateChange', (oldState, newState) => {
-                console.log(`[AudioPlayer] ${oldState.status} -> ${newState.status}`);
-            });
-            player.on('error', err => console.error('[AudioPlayer Error]', err));
-
-            connection.subscribe(player);
-
-            player.on(AudioPlayerStatus.Idle, async () => {
-                if (queue.ytdlpProcess) {
-                    if (typeof queue.ytdlpProcess.destroy === 'function') queue.ytdlpProcess.destroy();
-                    if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();
-                    queue.ytdlpProcess = null;
-                }
-                if (queue.isSeeking) {
-                    queue.isSeeking = false;
-                    this.playNext(guildId);
-                } else {
-                    const currentSong = queue.songs[0];
-                    if (currentSong) {
-                        queue.history.push(currentSong);
-                        if (queue.history.length > 50) queue.history.shift();
-                        
-                        if (queue.loopMode === 1) {
-                            // Song loop
-                        } else if (queue.loopMode === 2) {
-                            // Queue loop
-                            queue.songs.shift();
-                            queue.songs.push(currentSong);
-                        } else {
-                            // Normal
-                            queue.songs.shift();
-                        }
-                    }
-                    
-                    if (queue.songs.length > 0) {
-                        this.playNext(guildId);
-                    } else if (queue.autoplay && currentSong) {
-                        try {
-                            const relatedTitle = currentSong.title.replace(/[^\w\s]/gi, '').split(' ').slice(0, 4).join(' ');
-                            const info = await getTrackInfo(`${relatedTitle} mix`);
-                            
-                            if (info && info.title) {
-                                queue.songs.push({
-                                    title: info.title,
-                                    url: info.originalUrl,
-                                    duration: info.durationRaw,
-                                    uploader: 'Autoplay'
-                                });
-                                this.playNext(guildId);
-                            } else {
-                                this.handleQueueEnd(guildId, queue);
-                            }
-                        } catch (e) {
-                            this.handleQueueEnd(guildId, queue);
-                        }
-                    } else {
-                        this.handleQueueEnd(guildId, queue);
-                    }
-                }
-            });
-
-            player.on('error', error => {
-                console.error(`Audio error: ${error.message}`);
-                queue.songs.shift();
-                this.playNext(guildId);
-            });
-        }
+        const queue = await this._ensureQueue(channel, textChannel);
 
         const maxQueue = parseInt(process.env.MAX_QUEUE_SIZE) || 0;
         let addedCount = 0;
+        if (maxQueue > 0 && queue.songs.length >= maxQueue) {
+            return textChannel?.write({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
+        }
+
         for (const s of songs) {
             if (maxQueue > 0 && queue.songs.length >= maxQueue) {
                 break;
@@ -806,11 +903,7 @@ export class MusicManager {
             addedCount++;
         }
 
-        try {
-            await textChannel?.editOrReply({ content: `✅ Added **${addedCount}** songs to the queue.` });
-        } catch (e) {
-            await this.sendMessage(queue, { content: `✅ Added **${addedCount}** songs to the queue.` });
-        }
+        await textChannel?.editOrReply({ content: `✅ Added **${addedCount}** songs to the queue.` }).catch(() => this.sendMessage(queue, { content: `✅ Added **${addedCount}** songs to the queue.` }));
 
         if (!queue.playing) {
             await this.playNext(guildId);
@@ -829,13 +922,9 @@ export class MusicManager {
         
         if (playlistType) {
             try {
-                await textChannel?.editOrReply({ content: `🔍 Parsing online playlist...` }).catch(() => {});
-            } catch (e) {}
-
-            try {
                 let playlistResult;
                 if (playlistType === 'spotify_playlist' || playlistType === 'spotify_album') {
-                    playlistResult = await fetchSpotifyTracks(resolvedQuery);
+                    playlistResult = await fetchSpotifyTracks(resolvedQuery); // This is a placeholder, assuming you have this function
                 } else if (playlistType === 'apple_playlist' || playlistType === 'apple_album') {
                     playlistResult = await fetchAppleMusicTracks(resolvedQuery);
                 } else if (playlistType === 'deezer_playlist' || playlistType === 'deezer_album') {
@@ -848,9 +937,7 @@ export class MusicManager {
                     return textChannel?.editOrReply({ content: '❌ The playlist is empty or could not be loaded.' });
                 }
                 
-                try {
-                    await textChannel?.editOrReply({ content: `🎵 Loading **${playlistResult.tracks.length}** songs from playlist **${playlistResult.name}**...` }).catch(() => {});
-                } catch (e) {}
+                await textChannel?.editOrReply({ content: `🎵 Loading **${playlistResult.tracks.length}** songs from playlist **${playlistResult.name}**...` }).catch(() => {});
                 
                 await this.playSongs(channel, playlistResult.tracks, textChannel);
             } catch (e) {
@@ -885,123 +972,15 @@ export class MusicManager {
             requesterName: textChannel.member?.username || 'Unknown'
         };
 
-        let queue = this.getQueue(guildId);
-        
-        if (queue) {
-            const maxQueue = parseInt(process.env.MAX_QUEUE_SIZE) || 0;
-            if (maxQueue > 0 && queue.songs.length >= maxQueue) {
-                return textChannel?.write({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
-            }
-        }
-        
-        if (!queue) {
-            const player = createAudioPlayer();
-            const connection = await this.joinChannel(channel);
+        const queue = await this._ensureQueue(channel, textChannel);
 
-            queue = {
-                guildId,
-                voiceChannel: channel,
-                voiceChannelId: channel.id,
-                textChannelId: textChannel.channelId,
-                client: channel.client,
-                connection,
-                player,
-                songs: [],
-                history: [],
-                skipVotes: new Set(),
-                playing: false,
-                paused: false,
-                volume: parseInt(process.env.DEFAULT_VOLUME) || 100,
-                loopMode: 0, // 0 = off, 1 = song, 2 = queue
-                autoplay: false,
-                stay247: process.env.STAY_IN_CHANNEL === 'true',
-                isSeeking: false,
-                seekOffset: 0,
-                ignoreLoopOnce: false
-            };
-            this.queues.set(guildId, queue);
-
-            connection.on('stateChange', (oldState, newState) => {
-                console.log(`[VoiceConnection] ${oldState.status} -> ${newState.status}`);
-            });
-            connection.on('error', err => console.error('[VoiceConnection Error]', err));
-
-            player.on('stateChange', (oldState, newState) => {
-                console.log(`[AudioPlayer] ${oldState.status} -> ${newState.status}`);
-            });
-            player.on('error', err => console.error('[AudioPlayer Error]', err));
-
-            connection.subscribe(player);
-
-            player.on(AudioPlayerStatus.Idle, async () => {
-                if (queue.ytdlpProcess) {
-                    if (typeof queue.ytdlpProcess.destroy === 'function') queue.ytdlpProcess.destroy();
-                    if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();
-                    queue.ytdlpProcess = null;
-                }
-                if (queue.isSeeking) {
-                    queue.isSeeking = false;
-                    this.playNext(guildId);
-                } else {
-                    const currentSong = queue.songs[0];
-                    if (currentSong) {
-                        queue.history.push(currentSong);
-                        if (queue.history.length > 50) queue.history.shift();
-                        
-                        if (queue.loopMode === 1 && !queue.ignoreLoopOnce) {
-                            // Song loop, do not shift
-                        } else if (queue.loopMode === 2) {
-                            if (queue.ignoreLoopOnce) queue.ignoreLoopOnce = false;
-                            // Queue loop
-                            queue.songs.shift();
-                            queue.songs.push(currentSong);
-                        } else {
-                            if (queue.ignoreLoopOnce) queue.ignoreLoopOnce = false;
-                            // Normal
-                            queue.songs.shift();
-                        }
-                    }
-                    
-                    if (queue.songs.length > 0) {
-                        this.playNext(guildId);
-                    } else if (queue.autoplay && currentSong) {
-                        try {
-                            const relatedTitle = currentSong.title.replace(/[^\w\s]/gi, '').split(' ').slice(0, 4).join(' ');
-                            const info = await getTrackInfo(`${relatedTitle} mix`);
-                            
-                            if (info && info.title) {
-                                queue.songs.push({
-                                    title: info.title,
-                                    url: info.originalUrl,
-                                    duration: info.durationRaw,
-                                    uploader: 'Autoplay'
-                                });
-                                this.playNext(guildId);
-                            } else {
-                                this.handleQueueEnd(guildId, queue);
-                            }
-                        } catch (e) {
-                            this.handleQueueEnd(guildId, queue);
-                        }
-                    } else {
-                        this.handleQueueEnd(guildId, queue);
-                    }
-                }
-            });
-
-            player.on('error', error => {
-                console.error(`Audio error: ${error.message}`);
-                queue.songs.shift();
-                this.playNext(guildId);
-            });
+        const maxQueue = parseInt(process.env.MAX_QUEUE_SIZE) || 0;
+        if (maxQueue > 0 && queue.songs.length >= maxQueue) {
+            return textChannel?.write({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
         }
 
         queue.songs.push(song);
-        try {
-            await textChannel?.editOrReply({ content: `🎵 Added to queue: **${song.title}**` });
-        } catch (e) {
-            await this.sendMessage(queue, { content: `🎵 Added to queue: **${song.title}**` });
-        }
+        await textChannel?.editOrReply({ content: `🎵 Added to queue: **${song.title}**` }).catch(() => this.sendMessage(queue, { content: `🎵 Added to queue: **${song.title}**` }));
 
         if (!queue.playing) {
             await this.playNext(guildId);
@@ -1030,13 +1009,14 @@ export class MusicManager {
         
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-            const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio', '-o', '-', '--no-warnings', nextSong.originalUrl]);
+            const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--no-warnings', nextSong.originalUrl]);
             const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
             
-            // Large 8MB buffer for HDD sequential write optimization (minimizes HDD head thrashing)
-            const fileStream = fs.createWriteStream(tempFilePath, { highWaterMark: 1024 * 1024 * 8 });
-            ytdlpChildProcess.stdout.pipe(fileStream);
-            
+            // Log any errors from the prefetch process to help debug failures
+            ytdlpChildProcess.stderr.on('data', (data) => {
+                logger.error('Prefetch yt-dlp', `[${nextSong.title}] STDERR: ${data.toString().trim()}`);
+            });
+
             nextSong.prefetchFilePath = tempFilePath;
             nextSong.prefetchProcess = ytdlpChildProcess;
             
@@ -1070,7 +1050,6 @@ export class MusicManager {
             const isDirectRadioStream = song.sourceType === 'radio' || song.isRadio || /\.(mp3|ogg|aac|wav|flac|m4a)(\?|$)/i.test(song.originalUrl) || /streams\.ilovemusic\.de|streaming\.radio\.co|live\.musopen\.org|streams\.fluxfm\.de|radio\.synth\.fm|stream\.radioseda\.ir/i.test(song.originalUrl);
 
             let ffmpegArgs = [];
-            let inputSource = null;
             let tempFilePath = null;
 
             // Cleanup previous processes and temp files early to save memory
@@ -1101,13 +1080,14 @@ export class MusicManager {
                     tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
                     queue.tempFilePath = tempFilePath;
                     
-                    const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio', '-o', '-', '--no-warnings', song.originalUrl]);
+                    const ytdlpArgs = getYtDlpArgs(['-f', 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--no-warnings', song.originalUrl]);
                     const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
                     queue.ytdlpChildProcess = ytdlpChildProcess;
-                    
-                    // Large 8MB buffer for HDD sequential write optimization to prevent disk thrashing
-                    const fileStream = fs.createWriteStream(tempFilePath, { highWaterMark: 1024 * 1024 * 8 });
-                    ytdlpChildProcess.stdout.pipe(fileStream);
+
+                    // Log any errors from the yt-dlp process to help debug failures
+                    ytdlpChildProcess.stderr.on('data', (data) => {
+                        logger.error('yt-dlp', `[${song.title}] STDERR: ${data.toString().trim()}`);
+                    });
                     
                     // Wait for the download to buffer a bit
                     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1116,16 +1096,15 @@ export class MusicManager {
                 // Optimized FFmpeg pipeline for native hardware-aligned instructions (Stereo, 48000Hz PCM/Opus)
                 ffmpegArgs = [
                     '-hide_banner',
-                    '-threads', '0', // Allow FFmpeg to optimize thread count for CPU (e.g., ProLiant)
+                    // Dynamically assign thread count based on hardware profile to prevent CPU saturation
+                    '-threads', hardwareOptimization.threads,
                     '-i', tempFilePath, // Read from our temp file
                     '-analyzeduration', '0',
                     '-loglevel', 'warning',
                     '-vn',           // Drop video tracks completely
                     '-f', 's16le',
                     '-ar', '48000',
-                    '-ac', '2',
-                    // Use high-quality soxr resampler to minimize CPU overhead on mismatching sample rates
-                    '-af', 'aresample=resampler=soxr:precision=28'
+                    '-ac', '2'
                 ];
             } else {
                 // Direct radio streams cannot be prefetched to EOF (they are infinite)
@@ -1139,9 +1118,7 @@ export class MusicManager {
                     '-loglevel', 'warning',
                     '-f', 's16le',
                     '-ar', '48000',
-                    '-ac', '2',
-                    // Retain native hardware alignment optimizations for radio streams too
-                    '-af', 'aresample=resampler=soxr:precision=28'
+                    '-ac', '2'
                 ];
             }
 
@@ -1152,14 +1129,6 @@ export class MusicManager {
             ffmpegProcess.process.on('exit', code => logger.debug('FFmpeg', `Process exited with code ${code}`));
             
             queue.ytdlpProcess = ffmpegProcess; // Keeping same variable name for compatibility with cleanup
-
-            if (inputSource) {
-                // Pipe the prefetched memory buffer into FFmpeg
-                inputSource.pipe(ffmpegProcess.process.stdin);
-                // Handle stream errors silently
-                inputSource.on('error', () => {}); 
-                ffmpegProcess.process.stdin.on('error', () => {});
-            }
 
             const resource = createAudioResource(ffmpegProcess, {
                 inputType: StreamType.Raw,

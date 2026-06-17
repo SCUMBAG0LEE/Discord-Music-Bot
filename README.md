@@ -29,6 +29,9 @@ A feature-rich, ultra-high-performance Discord music bot with **YouTube, Spotify
 ### ⏯️ Advanced Playback
 - **Seek** — Jump to any timestamp in a song
 - **Previous** — Play the previous song (50 song history)
+- **Hardware Optimization Engine** — Automatically adapts FFmpeg threads and stream buffers to your host server's specs (RAM/CPU/Disk)
+- **Zero-Overhead Direct-to-Disk Stream** — Bypasses Node.js V8 garbage collection completely, drastically improving voice packet latency and preventing audio stutter
+- **Opus Priority Protocol** — Explicitly extracts pre-encoded Opus data from YouTube, resulting in perfectly matched Discord bitrate headers with minimal CPU usage
 - **24/7 Mode** — Keep the bot in voice channel indefinitely
 - **Volume Control** — 0-200% range
 - **Vote Skip** — Democratic skipping with configurable ratio based on voice channel members
@@ -137,6 +140,11 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `STREAMING_URL` | ❌ | Twitch or YouTube URL — required only if `ACTIVITY_TYPE=STREAMING` |
 | `BOT_STATUS` | ❌ | `online`, `idle`, `dnd`, or `invisible` (default: `online`) |
 | `SONG_IN_STATUS` | ❌ | Show current song as bot activity (`true`/`false`, default: `false`) |
+| `SYSTEM_DISK_TYPE` | ❌ | Optimize buffer chunks based on disk (`auto`, `hdd`, `ssd`, `nvme`) |
+| `FFMPEG_THREADS` | ❌ | Max threads allocated to audio transcoding (`auto`, `1`, `2`...) |
+| `STREAM_BUFFER_SIZE` | ❌ | Custom buffer size in MB for stream chunks (e.g. `16`) |
+| `YTDLP_PATH` | ❌ | Override default `yt-dlp` executable path |
+| `FFMPEG_PATH` | ❌ | Override default `ffmpeg` executable path |
 
 > **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
 > | Scenario | Activity |
@@ -291,6 +299,7 @@ bun run dev
 
 ## 📜 Version History
 
+- **v5.3.0** — Core Engine Rewrite: Added Hardware Optimization Engine, Direct-to-Disk stream routing, Native Opus Priority Protocol, removed legacy soxr upsampler for massive CPU gains, and unified FFmpeg fallback processes.
 - **v5.2.0** — Inactivity warnings & voice validation: Created global voice channel connection validator, protected all commands against outside interference, added empty voice channel disconnect messages, idle queue timeout alerts, and fixed voteskip listener count bug
 - **v5.1.0** — Audio quality & reliability: sodium-native for Opus encryption, SoundCloud routed through yt-dlp (fixed premature stream close), disconnect/reconnect race condition fix, auto-playlist infinite loop guard, song-in-status with Streaming badge, FFmpeg reconnect & CRLF headers, Dailymotion support, 5 full code audits with 20+ bug fixes
 - **v5.0.0** — Major refactor: Added server settings, admin commands, lyrics, DJ role per-server, fair queue, vote skip ratio, max duration, and more

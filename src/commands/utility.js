@@ -2,7 +2,7 @@ import { Command, Declare, Embed, Options, createStringOption } from 'seyfert';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { musicManager } from '../services/MusicManager.js';
+import { musicManager, ffmpegInfo, hardwareOptimization } from '../services/MusicManager.js';
 import { getVoiceConnection } from '@discordjs/voice';
 
 const execFileAsync = promisify(execFile);
@@ -62,18 +62,6 @@ export class StatsCommand extends Command {
         const uptime = formatDuration(Math.floor(process.uptime()));
         const memUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
         
-        let ffmpegInfo = 'Unknown';
-        let ffmpegVersion = 'Unknown';
-        try {
-            const prism = await import('prism-media');
-            const info = prism.default?.FFmpeg?.getInfo() || prism.FFmpeg?.getInfo();
-            const cmd = info?.command || 'Unknown';
-            ffmpegVersion = info?.version?.split(' ')[0] || 'Unknown';
-            if (cmd.includes('ffmpeg-static')) ffmpegInfo = 'ffmpeg-static';
-            else if (cmd === process.env.FFMPEG_PATH) ffmpegInfo = 'custom';
-            else ffmpegInfo = 'system ffmpeg';
-        } catch(e) {}
-
         let ytdlpVersion = 'Unknown';
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
@@ -91,7 +79,7 @@ export class StatsCommand extends Command {
                 { name: '💾 Memory', value: `${memUsage} MB`, inline: true },
                 { name: '📡 Runtime', value: typeof Bun !== 'undefined' ? `Bun v${Bun.version}` : `Node ${process.version}`, inline: true },
                 { name: '💻 Platform', value: `${os.platform()} ${os.arch()}`, inline: true },
-                { name: '🎵 FFmpeg', value: `${ffmpegInfo}\n(v${ffmpegVersion})`, inline: true },
+                { name: '🎵 FFmpeg', value: `${ffmpegInfo.type}\n(v${ffmpegInfo.version})`, inline: true },
                 { name: '📥 yt-dlp', value: `v${ytdlpVersion}`, inline: true }
             )
             .setFooter({ text: 'Powered by Seyfert' });
@@ -119,13 +107,7 @@ export class DebugCommand extends Command {
         let debugInfo = `**Shard ID:** ${ctx.shardId}\n`;
         debugInfo += `**Gateway Ping:** ${ctx.client.gateway.latency}ms\n\n`;
         
-        try {
-            const prism = await import('prism-media');
-            const info = prism.default?.FFmpeg?.getInfo() || prism.FFmpeg?.getInfo();
-            const ffmpegCommand = info?.command || 'Unknown';
-            const ffmpegVersion = info?.version?.split(' ')[0] || 'Unknown';
-            debugInfo += `**FFmpeg Path:** \`${ffmpegCommand}\`\n**FFmpeg Version:** \`${ffmpegVersion}\`\n`;
-        } catch(e) {}
+        debugInfo += `**FFmpeg Path:** \`${ffmpegInfo.path}\`\n**FFmpeg Version:** \`${ffmpegInfo.version}\`\n`;
 
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
@@ -134,6 +116,11 @@ export class DebugCommand extends Command {
         } catch(e) {
             debugInfo += `**yt-dlp Path:** \`${process.env.YTDLP_PATH || 'yt-dlp'}\`\n**yt-dlp Version:** \`Error/Not Found\`\n\n`;
         }
+        
+        debugInfo += `**Hardware Optimization:**\n`;
+        debugInfo += `> **Threads:** \`${hardwareOptimization.threads}\`\n`;
+        debugInfo += `> **Buffer:** \`${hardwareOptimization.bufferSizeMB} MB\`\n`;
+        debugInfo += `> **Disk Type:** \`${hardwareOptimization.diskType.toUpperCase()}\`\n\n`;
 
         if (queue && connection) {
             debugInfo += `**Voice Connection:** ${connection.state.status}\n`;
