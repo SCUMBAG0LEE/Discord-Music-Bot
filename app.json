@@ -29,24 +29,90 @@
       "description": "Cloudflare API Token with D1 Edit access (Optional, for persistent cloud database storage)",
       "required": false
     },
+    "SPOTIFY_CLIENT_ID": {
+      "description": "Spotify Client ID (Optional, for Spotify track loading)",
+      "required": false
+    },
+    "SPOTIFY_CLIENT_SECRET": {
+      "description": "Spotify Client Secret (Optional, for Spotify track loading)",
+      "required": false
+    },
+    "SPOTIFY_MARKET": {
+      "description": "Spotify market country code (Optional, e.g. US)",
+      "value": "US",
+      "required": false
+    },
+    "DEFAULT_VOLUME": {
+      "description": "Default playback volume level (0-200)",
+      "value": "100",
+      "required": false
+    },
+    "IDLE_TIMEOUT": {
+      "description": "Idle timeout in seconds before leaving voice channel (0 to disable)",
+      "value": "60",
+      "required": false
+    },
+    "MAX_QUEUE_SIZE": {
+      "description": "Maximum songs allowed in queue per user (0 for unlimited)",
+      "value": "100",
+      "required": false
+    },
+    "MAX_DURATION": {
+      "description": "Maximum song duration in seconds allowed to be played (0 for unlimited)",
+      "value": "0",
+      "required": false
+    },
+    "SKIP_RATIO": {
+      "description": "Vote skip ratio threshold (0.0 to 1.0)",
+      "value": "0.5",
+      "required": false
+    },
+    "STAY_IN_CHANNEL": {
+      "description": "Keep bot in voice channel indefinitely even if queue is empty (true/false)",
+      "value": "false",
+      "required": false
+    },
     "LOG_LEVEL": {
       "description": "Logger verbosity level (DEBUG, INFO, WARN, ERROR)",
       "value": "INFO",
       "required": false
     },
     "ACTIVITY_TYPE": {
-      "description": "Bot activity status type (PLAYING, LISTENING, WATCHING, COMPETING)",
+      "description": "Bot activity status type (PLAYING, LISTENING, WATCHING, COMPETING, STREAMING)",
       "value": "LISTENING",
       "required": false
     },
     "ACTIVITY_NAME": {
-      "description": "Bot activity status message",
+      "description": "Bot activity status message text",
       "value": "music | /help",
+      "required": false
+    },
+    "STREAMING_URL": {
+      "description": "Twitch or YouTube streaming URL (Required only if ACTIVITY_TYPE is STREAMING)",
       "required": false
     },
     "BOT_STATUS": {
       "description": "Bot presence status (online, idle, dnd, invisible)",
       "value": "online",
+      "required": false
+    },
+    "SONG_IN_STATUS": {
+      "description": "Show currently playing song title in bot status (true/false)",
+      "value": "true",
+      "required": false
+    },
+    "SYSTEM_DISK_TYPE": {
+      "description": "Host server storage optimization profile (auto, hdd, ssd, nvme)",
+      "value": "auto",
+      "required": false
+    },
+    "FFMPEG_THREADS": {
+      "description": "Maximum CPU threads allocated for audio transcoding (auto, 1, 2...)",
+      "value": "auto",
+      "required": false
+    },
+    "STREAM_BUFFER_SIZE": {
+      "description": "Custom stream buffer size in MB (Optional, overrides auto-profile)",
       "required": false
     }
   },
