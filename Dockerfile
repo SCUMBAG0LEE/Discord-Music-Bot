@@ -8,11 +8,11 @@ RUN apt-get update && apt-get install -y \
     python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package configuration files
-COPY package.json bun.lock ./
+# Copy package configuration files (bun.lock is optional to handle .gitignore)
+COPY package.json bun.loc[k] ./
 
 # Install dependencies, compiling native modules
-RUN bun install --frozen-lockfile
+RUN if [ -f bun.lock ]; then bun install --frozen-lockfile; else bun install; fi
 
 # --- Stage 2: Runtime stage ---
 FROM oven/bun:latest AS runner
