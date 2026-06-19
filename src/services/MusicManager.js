@@ -897,7 +897,7 @@ export class MusicManager {
         const maxQueue = parseInt(process.env.MAX_QUEUE_SIZE) || 0;
         let addedCount = 0;
         if (maxQueue > 0 && queue.songs.length >= maxQueue) {
-            return textChannel?.write({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
+            return textChannel?.editOrReply({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
         }
 
         for (const s of songs) {
@@ -969,11 +969,11 @@ export class MusicManager {
             // Limit checks
             const maxDuration = parseInt(process.env.MAX_DURATION) || 0;
             if (maxDuration > 0 && trackInfo.durationInSec > maxDuration) {
-                return textChannel?.write({ content: `❌ Song is too long! Maximum allowed duration is \`${maxDuration}s\`.`, flags: 64 });
+                return textChannel?.editOrReply({ content: `❌ Song is too long! Maximum allowed duration is \`${maxDuration}s\`.`, flags: 64 });
             }
         } catch (error) {
             console.error("Error fetching track:", error);
-            return textChannel?.write({ content: "❌ Could not find or validate that track.", flags: 64 });
+            return textChannel?.editOrReply({ content: "❌ Could not find or validate that track.", flags: 64 });
         }
 
         const song = {
@@ -991,7 +991,7 @@ export class MusicManager {
 
         const maxQueue = parseInt(process.env.MAX_QUEUE_SIZE) || 0;
         if (maxQueue > 0 && queue.songs.length >= maxQueue) {
-            return textChannel?.write({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
+            return textChannel?.editOrReply({ content: `❌ Queue is full! Maximum allowed songs is \`${maxQueue}\`.`, flags: 64 });
         }
 
         queue.songs.push(song);

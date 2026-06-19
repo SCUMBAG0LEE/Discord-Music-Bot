@@ -41,9 +41,36 @@ export function getYtDlpArgs(baseArgs) {
     if (process.env.YOUTUBE_COOKIES) {
         const tempCookiePath = path.join(os.tmpdir(), 'youtube-env-cookies.txt');
         try {
-            fs.writeFileSync(tempCookiePath, process.env.YOUTUBE_COOKIES.trim());
-            args.push('--cookies', tempCookiePath);
-            return args;
+            let cookieContent = process.env.YOUTUBE_COOKIES.trim();
+            
+            // Check if it's Base64 encoded (fails to start with typical Netscape header or JSON brackets)
+            if (!cookieContent.startsWith('#') && !cookieContent.startsWith('[')) {
+                try {
+                    const decoded = Buffer.from(cookieContent, 'base64').toString('utf8');
+                    // Confirm it decoded into Netscape format or JSON format
+                    if (decoded.includes('Netscape') || decoded.startsWith('[')) {
+                        cookieContent = decoded;
+                        console.log('[CookieParser] Successfully decoded Base64 cookies from environment.');
+                    }
+                } catch (b64Err) {
+                    console.warn('[CookieParser] Failed to decode cookies as Base64, processing raw:', b64Err.message);
+                }
+            }
+            
+            // If it starts with JSON brackets, convert it to Netscape
+            if (cookieContent.startsWith('[')) {
+                const tempJsonPath = path.join(os.tmpdir(), 'youtube-env-cookies.json');
+                fs.writeFileSync(tempJsonPath, cookieContent);
+                if (convertJsonToNetscape(tempJsonPath, tempCookiePath)) {
+                    args.push('--cookies', tempCookiePath);
+                    return args;
+                }
+            } else {
+                // Otherwise write it as a Netscape formatted text file
+                fs.writeFileSync(tempCookiePath, cookieContent);
+                args.push('--cookies', tempCookiePath);
+                return args;
+            }
         } catch (err) {
             console.error('[CookieParser] Failed to write cookies from environment variable:', err.message);
         }
