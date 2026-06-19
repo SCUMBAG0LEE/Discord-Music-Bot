@@ -1,4 +1,6 @@
 import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // Helper to convert JSON cookies to Netscape format required by yt-dlp
 function convertJsonToNetscape(jsonPath, txtPath) {
@@ -34,6 +36,18 @@ function convertJsonToNetscape(jsonPath, txtPath) {
  */
 export function getYtDlpArgs(baseArgs) {
     const args = [...baseArgs];
+    
+    // Support loading cookies securely from an environment variable (crucial for Heroku/Docker)
+    if (process.env.YOUTUBE_COOKIES) {
+        const tempCookiePath = path.join(os.tmpdir(), 'youtube-env-cookies.txt');
+        try {
+            fs.writeFileSync(tempCookiePath, process.env.YOUTUBE_COOKIES.trim());
+            args.push('--cookies', tempCookiePath);
+            return args;
+        } catch (err) {
+            console.error('[CookieParser] Failed to write cookies from environment variable:', err.message);
+        }
+    }
     
     // Check for native Netscape formats first
     if (fs.existsSync('./youtube-cookies.txt')) {

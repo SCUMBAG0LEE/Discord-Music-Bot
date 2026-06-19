@@ -26,8 +26,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the latest static FFmpeg and FFprobe binaries
-COPY --from=mwader/static-ffmpeg:latest /ffmpeg /usr/local/bin/
-COPY --from=mwader/static-ffmpeg:latest /ffprobe /usr/local/bin/
+COPY --from=mwader/static-ffmpeg:latest /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=mwader/static-ffmpeg:latest /ffprobe /usr/local/bin/ffprobe
+RUN chmod a+rx /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
 
 # Install the latest release of yt-dlp from official GitHub Releases
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \

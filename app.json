@@ -114,6 +114,10 @@
     "STREAM_BUFFER_SIZE": {
       "description": "Custom stream buffer size in MB (Optional, overrides auto-profile)",
       "required": false
+    },
+    "YOUTUBE_COOKIES": {
+      "description": "Raw content of your Netscape/JSON cookies file to bypass YouTube bot detection/age-gate (Optional)",
+      "required": false
     }
   },
   "formation": {
