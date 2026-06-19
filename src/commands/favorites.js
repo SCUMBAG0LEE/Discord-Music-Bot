@@ -15,7 +15,7 @@ export class LikeCommand extends Command {
         }
         
         const song = queue.songs[0];
-        const added = dbManager.addFavorite(ctx.member.id, song.url, song.title, song.duration);
+        const added = await dbManager.addFavorite(ctx.member.id, song.url, song.title, song.duration);
         
         if (added) {
             await ctx.write({ content: `❤️ Added **${song.title}** to your favorites!` });
@@ -31,7 +31,7 @@ export class LikeCommand extends Command {
 })
 export class FavoritesCommand extends Command {
     async run(ctx) {
-        const favorites = dbManager.getFavorites(ctx.member.id);
+        const favorites = await dbManager.getFavorites(ctx.member.id);
         
         if (!favorites || favorites.length === 0) {
             return ctx.write({ content: 'You have no saved favorites yet! Use `/like` when a song is playing.', flags: 64 });

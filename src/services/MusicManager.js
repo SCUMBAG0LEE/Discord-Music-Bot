@@ -1192,7 +1192,7 @@ export class MusicManager {
             queue.playing = true;
             queue.paused = false;
             
-            const settings = loadSettings(guildId);
+            const settings = await loadSettings(guildId);
             if (settings.announceNowPlaying !== false) {
                 const embed = new Embed()
                     .setTitle(`▶️ Now Playing`)

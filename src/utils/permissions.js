@@ -18,9 +18,9 @@ export function isOwner(userId) {
 /**
  * Check if user has DJ role (checks server-specific first, then global)
  * @param {object} member - Seyfert GuildMember object
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-export function isDJ(member) {
+export async function isDJ(member) {
   if (isOwner(member.id)) return true;
   
   const permissions = member.permissions;
@@ -28,7 +28,7 @@ export function isDJ(member) {
   if (permissions.has([PermissionFlagsBits.ManageGuild])) return true;
   
   // Get effective DJ role (server-specific or global)
-  const djRoleId = getEffectiveDJRole(member.guildId, process.env.DJ_ROLE_ID);
+  const djRoleId = await getEffectiveDJRole(member.guildId, process.env.DJ_ROLE_ID);
   
   if (!djRoleId) return true; // No DJ role set = everyone is DJ
   return member.roles.keys.includes(djRoleId);
@@ -61,7 +61,7 @@ export async function canUseDJCommands(ctx, queue) {
   if (isOwner(member.id)) return true;
   
   // Has DJ role
-  if (isDJ(member)) return true;
+  if (await isDJ(member)) return true;
   
   // Is track requester
   if (isRequester(member.id, queue)) return true;
@@ -164,8 +164,8 @@ export async function verifyVoiceConnection(ctx, queue = null, checkLock = true)
   
   if (checkLock) {
     const { canUseVoiceChannel, loadSettings } = await import('../services/serverSettings.js');
-    if (!canUseVoiceChannel(ctx.guildId, voiceChannelId)) {
-      const settings = loadSettings(ctx.guildId);
+    if (!await canUseVoiceChannel(ctx.guildId, voiceChannelId)) {
+      const settings = await loadSettings(ctx.guildId);
       await ctx.write({ 
         content: `🔒 Bot is locked to <#${settings.voiceChannelId}>. Please join that channel.`, 
         flags: 64 

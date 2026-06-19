@@ -23,7 +23,8 @@ A feature-rich, ultra-high-performance Discord music bot with **YouTube, Spotify
 - **Autoplay** — Automatically queue related songs when queue ends
 
 ### ❤️ Database & Favorites
-- **Fast Local DB** — Uses `bun:sqlite` for extreme performance
+- **Hybrid Storage Engine** — Uses local `bun:sqlite` for local development, and automatically transitions to **Cloudflare D1** serverless SQLite for ephemeral environments (like Heroku) based on environment variables.
+- **Server Settings Persistence** — Per-server config (skip ratio, DJ role, volume, channel locks) is persisted in the database as well.
 - **Favorites** — `/like` your current song and view with `/favorites`
 
 ### ⏯️ Advanced Playback
@@ -83,7 +84,14 @@ data/
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 🐳 Containerized Heroku Deployment (Recommended)
+This repository includes a multi-stage `Dockerfile`, `heroku.yml` manifest, and database abstraction layers for deploying the bot to Heroku via Docker in under 5 minutes.
+For detailed instructions on configuring Cloudflare D1 and deploying to Heroku, please refer to the [Heroku Deployment Guide](file:///d:/Documents/GitHub/Discord-Music-Bot/heroku-deployment-guide.md).
+
+### Local Installation
+To run the bot locally on your machine:
+
+#### Prerequisites
 
 - **Bun** (latest version) - Required for Seyfert
 - **FFmpeg** — Required for audio processing

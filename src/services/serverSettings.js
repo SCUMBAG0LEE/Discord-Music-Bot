@@ -5,13 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
-
-const SETTINGS_DIR = path.join(process.cwd(), 'data/servers');
-
-// Ensure directory exists
-if (!fs.existsSync(SETTINGS_DIR)) {
-  fs.mkdirSync(SETTINGS_DIR, { recursive: true });
-}
+import { dbManager } from './DatabaseManager.js';
 
 // Default server settings
 export const defaultSettings = {
@@ -29,28 +23,30 @@ export const defaultSettings = {
 };
 
 /**
- * Get settings file path for a server
- * @param {string} guildId
- * @returns {string}
- */
-function getSettingsPath(guildId) {
-  return path.join(SETTINGS_DIR, `${guildId}.json`);
-}
-
-/**
  * Load settings for a server
  * @param {string} guildId
- * @returns {object}
+ * @returns {Promise<object>}
  */
-export function loadSettings(guildId) {
-  const filePath = getSettingsPath(guildId);
-  if (!fs.existsSync(filePath)) {
-    return { ...defaultSettings };
-  }
+export async function loadSettings(guildId) {
   try {
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    return { ...defaultSettings, ...data };
-  } catch {
+    const res = await dbManager.query(
+      'SELECT key, value FROM server_settings WHERE guild_id = ?',
+      [guildId]
+    );
+
+    const settings = { ...defaultSettings };
+    if (res.results && res.results.length > 0) {
+      for (const row of res.results) {
+        try {
+          settings[row.key] = JSON.parse(row.value);
+        } catch {
+          settings[row.key] = row.value; // Fallback to raw string
+        }
+      }
+    }
+    return settings;
+  } catch (err) {
+    console.error(`[serverSettings] Failed to load settings for guild ${guildId}:`, err);
     return { ...defaultSettings };
   }
 }
@@ -59,21 +55,37 @@ export function loadSettings(guildId) {
  * Save settings for a server
  * @param {string} guildId
  * @param {object} settings
+ * @returns {Promise<void>}
  */
-export function saveSettings(guildId, settings) {
-  const filePath = getSettingsPath(guildId);
-  fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
+export async function saveSettings(guildId, settings) {
+  try {
+    for (const [key, value] of Object.entries(settings)) {
+      await dbManager.setServerSetting(guildId, key, JSON.stringify(value));
+    }
+  } catch (err) {
+    console.error(`[serverSettings] Failed to save settings for guild ${guildId}:`, err);
+  }
 }
 
 /**
  * Get a specific setting
  * @param {string} guildId
  * @param {string} key
- * @returns {any}
+ * @returns {Promise<any>}
  */
-export function getSetting(guildId, key) {
-  const settings = loadSettings(guildId);
-  return settings[key];
+export async function getSetting(guildId, key) {
+  try {
+    const val = await dbManager.getServerSetting(guildId, key);
+    if (val === null) return defaultSettings[key];
+    try {
+      return JSON.parse(val);
+    } catch {
+      return val;
+    }
+  } catch (err) {
+    console.error(`[serverSettings] Failed to get setting ${key} for guild ${guildId}:`, err);
+    return defaultSettings[key];
+  }
 }
 
 /**
@@ -81,25 +93,27 @@ export function getSetting(guildId, key) {
  * @param {string} guildId
  * @param {string} key
  * @param {any} value
- * @returns {object} Updated settings
+ * @returns {Promise<object>} Updated settings
  */
-export function setSetting(guildId, key, value) {
-  const settings = loadSettings(guildId);
-  settings[key] = value;
-  saveSettings(guildId, settings);
-  return settings;
+export async function setSetting(guildId, key, value) {
+  try {
+    await dbManager.setServerSetting(guildId, key, JSON.stringify(value));
+  } catch (err) {
+    console.error(`[serverSettings] Failed to set setting ${key} for guild ${guildId}:`, err);
+  }
+  return await loadSettings(guildId);
 }
 
 /**
  * Reset settings to defaults
  * @param {string} guildId
+ * @returns {Promise<void>}
  */
 export async function resetSettings(guildId) {
-  const filePath = getSettingsPath(guildId);
-  if (fs.existsSync(filePath)) {
-    try {
-      await fs.promises.unlink(filePath);
-    } catch (e) {}
+  try {
+    await dbManager.clearServerSettings(guildId);
+  } catch (err) {
+    console.error(`[serverSettings] Failed to reset settings for guild ${guildId}:`, err);
   }
 }
 
@@ -107,10 +121,10 @@ export async function resetSettings(guildId) {
  * Check if bot can respond in a text channel
  * @param {string} guildId
  * @param {string} channelId
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-export function canUseTextChannel(guildId, channelId) {
-  const settings = loadSettings(guildId);
+export async function canUseTextChannel(guildId, channelId) {
+  const settings = await loadSettings(guildId);
   if (!settings.textChannelId) return true; // Not locked
   return settings.textChannelId === channelId;
 }
@@ -119,10 +133,10 @@ export function canUseTextChannel(guildId, channelId) {
  * Check if bot can join a voice channel
  * @param {string} guildId
  * @param {string} channelId
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-export function canUseVoiceChannel(guildId, channelId) {
-  const settings = loadSettings(guildId);
+export async function canUseVoiceChannel(guildId, channelId) {
+  const settings = await loadSettings(guildId);
   if (!settings.voiceChannelId) return true; // Not locked
   return settings.voiceChannelId === channelId;
 }
@@ -131,10 +145,10 @@ export function canUseVoiceChannel(guildId, channelId) {
  * Get effective skip ratio (per-server or global)
  * @param {string} guildId
  * @param {number} globalRatio
- * @returns {number}
+ * @returns {Promise<number>}
  */
-export function getEffectiveSkipRatio(guildId, globalRatio) {
-  const settings = loadSettings(guildId);
+export async function getEffectiveSkipRatio(guildId, globalRatio) {
+  const settings = await loadSettings(guildId);
   return settings.skipRatio ?? globalRatio;
 }
 
@@ -142,10 +156,10 @@ export function getEffectiveSkipRatio(guildId, globalRatio) {
  * Get effective default volume (per-server or global)
  * @param {string} guildId
  * @param {number} globalVolume
- * @returns {number}
+ * @returns {Promise<number>}
  */
-export function getEffectiveVolume(guildId, globalVolume) {
-  const settings = loadSettings(guildId);
+export async function getEffectiveVolume(guildId, globalVolume) {
+  const settings = await loadSettings(guildId);
   return settings.defaultVolume ?? globalVolume;
 }
 
@@ -153,9 +167,54 @@ export function getEffectiveVolume(guildId, globalVolume) {
  * Get effective DJ role (per-server or global)
  * @param {string} guildId
  * @param {string} globalDJRole
- * @returns {string|null}
+ * @returns {Promise<string|null>}
  */
-export function getEffectiveDJRole(guildId, globalDJRole) {
-  const settings = loadSettings(guildId);
+export async function getEffectiveDJRole(guildId, globalDJRole) {
+  const settings = await loadSettings(guildId);
   return settings.djRoleId ?? globalDJRole;
+}
+
+// Run legacy migration asynchronously if running locally
+if (!dbManager.isCloud) {
+  migrateLegacySettings().catch(err => {
+    console.error('[serverSettings] Error running legacy migration:', err);
+  });
+}
+
+/**
+ * Migrate local JSON files to DB
+ */
+async function migrateLegacySettings() {
+  const settingsDir = path.join(process.cwd(), 'data/servers');
+  if (!fs.existsSync(settingsDir)) return;
+  try {
+    const files = fs.readdirSync(settingsDir);
+    const jsonFiles = files.filter(f => f.endsWith('.json'));
+    if (jsonFiles.length === 0) return;
+    
+    console.log(`[serverSettings/Migration] Found ${jsonFiles.length} server settings files. Migrating to database...`);
+    const backupDir = path.join(settingsDir, 'backup_migrated');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    
+    for (const file of jsonFiles) {
+      try {
+        const guildId = file.replace('.json', '');
+        const filePath = path.join(settingsDir, file);
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const settings = JSON.parse(fileContent);
+        
+        for (const [key, value] of Object.entries(settings)) {
+          await dbManager.setServerSetting(guildId, key, JSON.stringify(value));
+        }
+        console.log(`[serverSettings/Migration] Migrated settings for guild ${guildId}`);
+        fs.renameSync(filePath, path.join(backupDir, file));
+      } catch (fileErr) {
+        console.error(`[serverSettings/Migration] Error migrating settings file ${file}:`, fileErr);
+      }
+    }
+  } catch (err) {
+    console.error('[serverSettings/Migration] Failed to run legacy settings migration:', err);
+  }
 }

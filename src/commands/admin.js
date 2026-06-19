@@ -30,7 +30,7 @@ const forceRemoveOptions = {
 @Options(forceRemoveOptions)
 export class ForceRemoveCommand extends Command {
     async run(ctx) {
-        if (!isDJ(ctx.member)) return djOnlyError(ctx);
+        if (!await isDJ(ctx.member)) return djOnlyError(ctx);
 
         const queue = musicManager.getQueue(ctx.guildId);
         if (!queue || queue.songs.length <= 1) {
@@ -88,10 +88,10 @@ export class SetTcCommand extends Command {
         
         const channel = ctx.options.channel;
         if (channel) {
-            setSetting(ctx.guildId, 'textChannelId', channel.id);
+            await setSetting(ctx.guildId, 'textChannelId', channel.id);
             return ctx.write({ content: `✅ Bot will now only respond to commands in <#${channel.id}>.\n\n*Note: Commands in other channels will be ignored.*` });
         } else {
-            setSetting(ctx.guildId, 'textChannelId', null);
+            await setSetting(ctx.guildId, 'textChannelId', null);
             return ctx.write({ content: '✅ Bot will respond to commands in any channel.' });
         }
     }
@@ -114,10 +114,10 @@ export class SetVcCommand extends Command {
         
         const channel = ctx.options.channel;
         if (channel) {
-            setSetting(ctx.guildId, 'voiceChannelId', channel.id);
+            await setSetting(ctx.guildId, 'voiceChannelId', channel.id);
             return ctx.write({ content: `✅ Bot will only join <#${channel.id}>.\n\n*Note: Play commands from other voice channels will be rejected.*` });
         } else {
-            setSetting(ctx.guildId, 'voiceChannelId', null);
+            await setSetting(ctx.guildId, 'voiceChannelId', null);
             return ctx.write({ content: '✅ Bot can join any voice channel.' });
         }
     }
@@ -143,7 +143,7 @@ export class QueueTypeCommand extends Command {
         if (!isAdmin(ctx)) return ctx.write({ content: '🔒 This command requires Administrator permission.', flags: 64 });
         
         const type = ctx.options.type;
-        setSetting(ctx.guildId, 'queueType', type);
+        await setSetting(ctx.guildId, 'queueType', type);
         
         const description = type === 'fair'
             ? '🔄 **Fair Queue**: Bot will alternate between users, preventing one person from dominating the queue.'
@@ -172,10 +172,10 @@ export class SkipRatioCommand extends Command {
         
         const ratio = ctx.options.ratio;
         if (ratio !== null && ratio !== undefined) {
-            setSetting(ctx.guildId, 'skipRatio', ratio);
+            await setSetting(ctx.guildId, 'skipRatio', ratio);
             return ctx.write({ content: `✅ Skip ratio set to **${(ratio * 100).toFixed(0)}%** of listeners needed to skip.` });
         } else {
-            setSetting(ctx.guildId, 'skipRatio', null);
+            await setSetting(ctx.guildId, 'skipRatio', null);
             const defaultRatio = parseFloat(process.env.SKIP_RATIO) || 0.5;
             return ctx.write({ content: `✅ Skip ratio reset to global default (${(defaultRatio * 100).toFixed(0)}%).` });
         }
@@ -198,7 +198,7 @@ export class SongInStatusCommand extends Command {
         if (!isAdmin(ctx)) return ctx.write({ content: '🔒 This command requires Administrator permission.', flags: 64 });
         
         const enabled = ctx.options.enabled;
-        setSetting(ctx.guildId, 'songInStatus', enabled);
+        await setSetting(ctx.guildId, 'songInStatus', enabled);
         
         if (enabled) {
             return ctx.write({ content: '✅ Bot status will now show the current song.' });
@@ -227,11 +227,11 @@ export class MaxDurationCommand extends Command {
         
         const seconds = ctx.options.seconds;
         if (seconds === 0) {
-            setSetting(ctx.guildId, 'maxDuration', null);
+            await setSetting(ctx.guildId, 'maxDuration', null);
             return ctx.write({ content: '✅ Maximum song duration removed (unlimited).' });
         }
         
-        setSetting(ctx.guildId, 'maxDuration', seconds);
+        await setSetting(ctx.guildId, 'maxDuration', seconds);
         const hours = Math.floor(seconds / 3600);
         const mins = Math.floor((seconds % 3600) / 60);
         const secs = seconds % 60;
@@ -262,10 +262,10 @@ export class SetDjRoleCommand extends Command {
         
         const role = ctx.options.role;
         if (role) {
-            setSetting(ctx.guildId, 'djRoleId', role.id);
+            await setSetting(ctx.guildId, 'djRoleId', role.id);
             return ctx.write({ content: `✅ DJ role set to <@&${role.id}>.\n\nMembers with this role can use DJ-only commands.` });
         } else {
-            setSetting(ctx.guildId, 'djRoleId', null);
+            await setSetting(ctx.guildId, 'djRoleId', null);
             return ctx.write({ content: '✅ DJ role cleared. Only administrators can use DJ commands now.' });
         }
     }
@@ -280,7 +280,7 @@ export class ServerSettingsCommand extends Command {
     async run(ctx) {
         if (!isAdmin(ctx)) return ctx.write({ content: '🔒 This command requires Administrator permission.', flags: 64 });
         
-        const settings = loadSettings(ctx.guildId);
+        const settings = await loadSettings(ctx.guildId);
         
         const embed = new Embed()
             .setTitle('⚙️ Server Settings')

@@ -85,7 +85,7 @@ const announceSubOptions = {
 })
 class SettingsViewSub extends SubCommand {
     async run(ctx) {
-        const settings = loadSettings(ctx.guildId);
+        const settings = await loadSettings(ctx.guildId);
         const queue = musicManager.getQueue(ctx.guildId);
         
         const volume = queue ? `${queue.volume}%` : `${settings.defaultVolume ?? process.env.DEFAULT_VOLUME ?? 100}%`;
@@ -123,10 +123,10 @@ class SettingsViewSub extends SubCommand {
 @Options(volumeSubOptions)
 class SettingsVolumeSub extends SubCommand {
     async run(ctx) {
-        if (!isDJ(ctx.member)) return djOnlyError(ctx);
+        if (!await isDJ(ctx.member)) return djOnlyError(ctx);
 
         const level = ctx.options.level;
-        setSetting(ctx.guildId, 'defaultVolume', level);
+        await setSetting(ctx.guildId, 'defaultVolume', level);
         
         // Apply to current queue if exists
         const queue = musicManager.getQueue(ctx.guildId);
@@ -145,10 +145,10 @@ class SettingsVolumeSub extends SubCommand {
 @Options(announceSubOptions)
 class SettingsAnnouncementsSub extends SubCommand {
     async run(ctx) {
-        if (!isDJ(ctx.member)) return djOnlyError(ctx);
+        if (!await isDJ(ctx.member)) return djOnlyError(ctx);
 
         const enabled = ctx.options.enabled;
-        setSetting(ctx.guildId, 'announceNowPlaying', enabled);
+        await setSetting(ctx.guildId, 'announceNowPlaying', enabled);
         
         return ctx.write({ 
             content: enabled 

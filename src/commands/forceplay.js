@@ -16,7 +16,7 @@ const options = {
 @Options(options)
 export default class ForcePlayCommand extends Command {
     async run(ctx) {
-        if (!isDJ(ctx.member)) {
+        if (!await isDJ(ctx.member)) {
             return djOnlyError(ctx);
         }
 

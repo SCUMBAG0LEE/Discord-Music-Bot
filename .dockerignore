@@ -1,0 +1,33 @@
+# Ignore local dependencies and credentials
+node_modules/
+.git/
+.gitignore
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+
+# Ignore local SQLite databases and settings files
+*.sqlite
+data/
+
+# Ignore prefetch files or logs
+*.audio
+*.log
+
+# Ignore user credentials/cookies
+cookies-converted.txt
+youtube-cookies-converted.txt
+youtube-cookies.txt
+cookies.txt
+youtube-cookies.json
+cookies.json
+
+# Ignore build/deployment metadata
+Dockerfile
+docker-compose.yml
+heroku.yml
+heroku-deployment-guide.md
+README.md
+LICENSE

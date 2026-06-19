@@ -32,7 +32,7 @@ export class SavelistCommand extends Command {
             sourceUrl: song.originalUrl
         }));
 
-        const { success, error } = dbManager.savePlaylist(ctx.member.id, name, songsToSave);
+        const { success, error } = await dbManager.savePlaylist(ctx.member.id, name, songsToSave);
         if (!success) {
             return ctx.write({ content: `❌ ${error}`, flags: 64 });
         }
@@ -60,7 +60,7 @@ export class LoadlistCommand extends Command {
         }
 
         const name = ctx.options.name;
-        const { playlist, error } = dbManager.loadPlaylist(ctx.member.id, name);
+        const { playlist, error } = await dbManager.loadPlaylist(ctx.member.id, name);
 
         if (error) {
             return ctx.editOrReply({ content: `❌ ${error}` });
@@ -96,7 +96,7 @@ export class LoadlistCommand extends Command {
 export class DeletelistCommand extends Command {
     async run(ctx) {
         const name = ctx.options.name;
-        const { success, error } = dbManager.deletePlaylist(ctx.member.id, name);
+        const { success, error } = await dbManager.deletePlaylist(ctx.member.id, name);
 
         if (!success) {
             return ctx.write({ content: `❌ ${error}`, flags: 64 });
@@ -112,7 +112,7 @@ export class DeletelistCommand extends Command {
 })
 export class PlaylistsCommand extends Command {
     async run(ctx) {
-        const { playlists, error } = dbManager.listPlaylists(ctx.member.id);
+        const { playlists, error } = await dbManager.listPlaylists(ctx.member.id);
 
         if (error) {
             return ctx.write({ content: `❌ ${error}`, flags: 64 });
@@ -160,7 +160,7 @@ export class AppendlistCommand extends Command {
             sourceUrl: song.originalUrl
         }));
 
-        const { success, error } = dbManager.appendToPlaylist(ctx.member.id, name, songsToSave);
+        const { success, error } = await dbManager.appendToPlaylist(ctx.member.id, name, songsToSave);
         if (!success) {
             return ctx.write({ content: `❌ ${error}`, flags: 64 });
         }
