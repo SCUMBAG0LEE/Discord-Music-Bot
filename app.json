@@ -42,11 +42,6 @@
       "value": "US",
       "required": false
     },
-    "DEFAULT_VOLUME": {
-      "description": "Default playback volume level (0-200)",
-      "value": "100",
-      "required": false
-    },
     "IDLE_TIMEOUT": {
       "description": "Idle timeout in seconds before leaving voice channel (0 to disable)",
       "value": "60",

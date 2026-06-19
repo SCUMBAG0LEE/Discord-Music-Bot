@@ -313,11 +313,7 @@ export class ServerSettingsCommand extends Command {
                     value: settings.songInStatus ? 'Enabled' : 'Disabled',
                     inline: true 
                 },
-                { 
-                    name: '🔊 Default Volume', 
-                    value: `${settings.defaultVolume || process.env.DEFAULT_VOLUME || 50}%`,
-                    inline: true 
-                },
+
                 { 
                     name: '🎭 DJ Role', 
                     value: settings.djRoleId ? `<@&${settings.djRoleId}>` : 'Not set',

@@ -63,14 +63,6 @@ export class Stay247Command extends Command {
     }
 }
 
-const volumeSubOptions = {
-    level: createIntegerOption({
-        description: 'Volume level (0-200)',
-        required: true,
-        min_value: 0,
-        max_value: 200
-    })
-};
 
 const announceSubOptions = {
     enabled: createBooleanOption({
@@ -88,7 +80,6 @@ class SettingsViewSub extends SubCommand {
         const settings = await loadSettings(ctx.guildId);
         const queue = musicManager.getQueue(ctx.guildId);
         
-        const volume = queue ? `${queue.volume}%` : `${settings.defaultVolume ?? process.env.DEFAULT_VOLUME ?? 100}%`;
         const announcements = settings.announceNowPlaying !== false ? 'Enabled' : 'Disabled';
         const loopMode = queue 
             ? (queue.loopMode === 1 ? 'Song' : queue.loopMode === 2 ? 'Queue' : 'Off') 
@@ -104,39 +95,17 @@ class SettingsViewSub extends SubCommand {
             .setTitle('🎵 Music Settings')
             .setColor('#5865F2')
             .addFields([
-                { name: '🔊 Default Volume', value: volume, inline: true },
                 { name: '📢 Announcements', value: announcements, inline: true },
                 { name: '🔁 Loop Mode', value: loopMode, inline: true },
                 { name: '📻 24/7 Mode', value: stay247, inline: true },
                 { name: '🔀 Autoplay', value: autoplay, inline: true }
             ])
-            .setFooter({ text: 'Use /settings volume or /settings announcements to change settings' });
+            .setFooter({ text: 'Use /settings announcements to change settings' });
 
         return ctx.write({ embeds: [embed] });
     }
 }
 
-@Declare({
-    name: 'volume',
-    description: 'Set default volume for this server'
-})
-@Options(volumeSubOptions)
-class SettingsVolumeSub extends SubCommand {
-    async run(ctx) {
-        if (!await isDJ(ctx.member)) return djOnlyError(ctx);
-
-        const level = ctx.options.level;
-        await setSetting(ctx.guildId, 'defaultVolume', level);
-        
-        // Apply to current queue if exists
-        const queue = musicManager.getQueue(ctx.guildId);
-        if (queue) {
-            musicManager.setVolume(ctx.guildId, level);
-        }
-        
-        return ctx.write({ content: `🔊 Default volume set to **${level}%**` });
-    }
-}
 
 @Declare({
     name: 'announcements',
@@ -162,7 +131,7 @@ class SettingsAnnouncementsSub extends SubCommand {
     name: 'settings',
     description: 'View or change music settings'
 })
-@Options([SettingsViewSub, SettingsVolumeSub, SettingsAnnouncementsSub])
+@Options([SettingsViewSub, SettingsAnnouncementsSub])
 export class SettingsCommand extends Command {
     async run(ctx) {
         // Seyfert automatically routes to subcommands based on the interaction.

@@ -48,34 +48,3 @@ export class ResumeCommand extends Command {
     }
 }
 
-const volumeOptions = {
-    level: createIntegerOption({
-        description: 'Volume level (0-200, default is 100)',
-        required: true,
-        min_value: 0,
-        max_value: 200
-    })
-};
-
-@Declare({
-    name: 'volume',
-    description: 'Set playback volume'
-})
-@Options(volumeOptions)
-export class VolumeCommand extends Command {
-    async run(ctx) {
-        const queue = musicManager.getQueue(ctx.guildId);
-        
-        if (!queue) {
-            return ctx.write({ content: 'There is no active queue.', flags: 64 });
-        }
-        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
-        if (!voiceChannelId) return;
-        
-        const level = ctx.options.level;
-        musicManager.setVolume(ctx.guildId, level);
-        
-        const emoji = level === 0 ? '🔇' : level < 50 ? '🔈' : level < 100 ? '🔉' : '🔊';
-        await ctx.write({ content: `${emoji} Volume set to **${level}%**` });
-    }
-}

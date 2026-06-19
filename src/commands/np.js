@@ -19,7 +19,7 @@ export default class NowPlayingCommand extends Command {
             .setTitle(`🎵 Now Playing`)
             .setDescription(`**[${song.title}](${song.originalUrl})**\n\n\`Duration: ${song.duration}\``)
             .setColor('#5865F2')
-            .setFooter({ text: `${queue.paused ? '⏸️ Paused' : '▶️ Playing'} • Volume: ${queue.volume}%` });
+            .setFooter({ text: `${queue.paused ? '⏸️ Paused' : '▶️ Playing'}` });
         
         const row = getPlayerControls(queue);
         

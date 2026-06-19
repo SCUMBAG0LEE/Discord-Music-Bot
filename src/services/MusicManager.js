@@ -565,14 +565,7 @@ async function getTrackInfo(query, searchPrefix = '') {
     const target = isUrl ? query : `${searchPrefix}${query}`;
     
     try {
-        const args = getYtDlpArgs([
-            '-j', 
-            '-f', 'bestaudio/best', 
-            '--extractor-args', 'youtube:player_client=default',
-            '--socket-timeout', '15', 
-            '--no-warnings', 
-            target
-        ]);
+        const args = getYtDlpArgs(['-j', '-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '--socket-timeout', '15', '--no-warnings', target]);
         const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
         const lines = stdout.trim().split('\n').filter(Boolean);
         if (lines.length === 0) throw new Error("No data returned from yt-dlp.");
@@ -711,16 +704,6 @@ export class MusicManager {
         }
     }
 
-    setVolume(guildId, volume) {
-        const queue = this.getQueue(guildId);
-        if (queue) {
-            queue.volume = volume;
-            if (queue.resource?.volume) {
-                queue.resource.volume.setVolume(volume / 100);
-            }
-        }
-    }
-
     shuffle(guildId) {
         const queue = this.getQueue(guildId);
         if (queue && queue.songs.length > 1) {
@@ -822,7 +805,7 @@ export class MusicManager {
             skipVotes: new Set(),
             playing: false,
             paused: false,
-            volume: parseInt(process.env.DEFAULT_VOLUME) || 100,
+
             loopMode: 0, // 0 = off, 1 = song, 2 = queue
             autoplay: false,
             stay247: process.env.STAY_IN_CHANNEL === 'true',
@@ -1043,16 +1026,7 @@ export class MusicManager {
         
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-            const ytdlpArgs = getYtDlpArgs([
-                '-f', 'bestaudio/best', 
-                '--extractor-args', 'youtube:player_client=default',
-                '-o', tempFilePath, 
-                '--no-part', 
-                '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, 
-                '--socket-timeout', '15', 
-                '--no-warnings', 
-                nextSong.originalUrl
-            ]);
+            const ytdlpArgs = getYtDlpArgs(['-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--socket-timeout', '15', '--no-warnings', nextSong.originalUrl]);
             const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
             
             // Log any errors from the prefetch process to help debug failures
@@ -1143,16 +1117,7 @@ export class MusicManager {
                     tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
                     queue.tempFilePath = tempFilePath;
                     
-                    const ytdlpArgs = getYtDlpArgs([
-                        '-f', 'bestaudio/best', 
-                        '--extractor-args', 'youtube:player_client=default',
-                        '-o', tempFilePath, 
-                        '--no-part', 
-                        '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, 
-                        '--socket-timeout', '15', 
-                        '--no-warnings', 
-                        song.originalUrl
-                    ]);
+                    const ytdlpArgs = getYtDlpArgs(['-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--socket-timeout', '15', '--no-warnings', song.originalUrl]);
                     const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
                     queue.ytdlpChildProcess = ytdlpChildProcess;
 
@@ -1183,15 +1148,14 @@ export class MusicManager {
                 // Optimized FFmpeg pipeline for native hardware-aligned instructions (Stereo, 48000Hz PCM/Opus)
                 ffmpegArgs = [
                     '-hide_banner',
-                    // Dynamically assign thread count based on hardware profile to prevent CPU saturation
                     '-threads', hardwareOptimization.threads,
-                    '-i', tempFilePath, // Read from our temp file
+                    '-i', tempFilePath,
                     '-analyzeduration', '0',
                     '-loglevel', 'warning',
-                    '-vn',           // Drop video tracks completely
-                    '-f', 's16le',
-                    '-ar', '48000',
-                    '-ac', '2'
+                    '-vn',
+                    '-c:a', 'libopus',
+                    '-b:a', '96k',
+                    '-f', 'opus'
                 ];
             } else {
                 // Direct radio streams cannot be prefetched to EOF (they are infinite)
@@ -1203,9 +1167,10 @@ export class MusicManager {
                     '-i', streamUrl,
                     '-analyzeduration', '0',
                     '-loglevel', 'warning',
-                    '-f', 's16le',
-                    '-ar', '48000',
-                    '-ac', '2'
+                    '-vn',
+                    '-c:a', 'libopus',
+                    '-b:a', '96k',
+                    '-f', 'opus'
                 ];
             }
 
@@ -1218,11 +1183,10 @@ export class MusicManager {
             queue.ytdlpProcess = ffmpegProcess; // Keeping same variable name for compatibility with cleanup
 
             const resource = createAudioResource(ffmpegProcess, {
-                inputType: StreamType.Raw,
-                inlineVolume: true
+                inputType: StreamType.OggOpus,
+                inlineVolume: false
             });
             
-            resource.volume.setVolume(queue.volume / 100);
             queue.resource = resource;
 
             queue.player.play(resource);
