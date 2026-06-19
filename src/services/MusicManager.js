@@ -104,7 +104,9 @@ try {
         });
     }
 } catch (e) {
-    logger.error('FFmpeg', 'Error configuring FFmpeg path, using fallback.', e);
+    logger.error('FFmpeg', 'Error configuring FFmpeg path, using fallback.', e.message || e);
+    // Even if it failed, attempt to assign something so it doesn't crash prism
+    ffmpegInfo.path = ffmpegInfo.path !== 'unknown' ? ffmpegInfo.path : 'ffmpeg';
 }
 
 const execFileAsync = promisify(execFile);
@@ -563,7 +565,14 @@ async function getTrackInfo(query, searchPrefix = '') {
     const target = isUrl ? query : `${searchPrefix}${query}`;
     
     try {
-        const args = getYtDlpArgs(['-j', '-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '--socket-timeout', '15', '--no-warnings', target]);
+        const args = getYtDlpArgs([
+            '-j', 
+            '-f', 'bestaudio/best', 
+            '--extractor-args', 'youtube:player_client=default',
+            '--socket-timeout', '15', 
+            '--no-warnings', 
+            target
+        ]);
         const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
         const lines = stdout.trim().split('\n').filter(Boolean);
         if (lines.length === 0) throw new Error("No data returned from yt-dlp.");
@@ -1034,7 +1043,16 @@ export class MusicManager {
         
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-            const ytdlpArgs = getYtDlpArgs(['-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--socket-timeout', '15', '--no-warnings', nextSong.originalUrl]);
+            const ytdlpArgs = getYtDlpArgs([
+                '-f', 'bestaudio/best', 
+                '--extractor-args', 'youtube:player_client=default',
+                '-o', tempFilePath, 
+                '--no-part', 
+                '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, 
+                '--socket-timeout', '15', 
+                '--no-warnings', 
+                nextSong.originalUrl
+            ]);
             const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
             
             // Log any errors from the prefetch process to help debug failures
@@ -1125,7 +1143,16 @@ export class MusicManager {
                     tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
                     queue.tempFilePath = tempFilePath;
                     
-                    const ytdlpArgs = getYtDlpArgs(['-f', '251/250/249/bestaudio[acodec=opus]/bestaudio/best', '-o', tempFilePath, '--no-part', '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, '--socket-timeout', '15', '--no-warnings', song.originalUrl]);
+                    const ytdlpArgs = getYtDlpArgs([
+                        '-f', 'bestaudio/best', 
+                        '--extractor-args', 'youtube:player_client=default',
+                        '-o', tempFilePath, 
+                        '--no-part', 
+                        '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, 
+                        '--socket-timeout', '15', 
+                        '--no-warnings', 
+                        song.originalUrl
+                    ]);
                     const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
                     queue.ytdlpChildProcess = ytdlpChildProcess;
 
