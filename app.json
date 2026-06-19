@@ -1,0 +1,59 @@
+{
+  "name": "Discord Music Bot",
+  "description": "A feature-rich, high-performance Discord music bot using Seyfert + yt-dlp",
+  "repository": "https://github.com/SCUMBAG0LEE/Discord-Music-Bot",
+  "keywords": ["discord", "music", "bot", "yt-dlp", "seyfert", "bun"],
+  "stack": "container",
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Your Discord Bot Token (from Discord Developer Portal)",
+      "required": true
+    },
+    "CLIENT_ID": {
+      "description": "Your Discord Application (Client) ID",
+      "required": true
+    },
+    "BOT_OWNER_ID": {
+      "description": "Your Discord User ID (for owner-only commands)",
+      "required": true
+    },
+    "CLOUDFLARE_D1_ACCOUNT_ID": {
+      "description": "Cloudflare Account ID (Optional, for persistent cloud database storage)",
+      "required": false
+    },
+    "CLOUDFLARE_D1_DATABASE_ID": {
+      "description": "Cloudflare D1 Database UUID (Optional, for persistent cloud database storage)",
+      "required": false
+    },
+    "CLOUDFLARE_D1_API_TOKEN": {
+      "description": "Cloudflare API Token with D1 Edit access (Optional, for persistent cloud database storage)",
+      "required": false
+    },
+    "LOG_LEVEL": {
+      "description": "Logger verbosity level (DEBUG, INFO, WARN, ERROR)",
+      "value": "INFO",
+      "required": false
+    },
+    "ACTIVITY_TYPE": {
+      "description": "Bot activity status type (PLAYING, LISTENING, WATCHING, COMPETING)",
+      "value": "LISTENING",
+      "required": false
+    },
+    "ACTIVITY_NAME": {
+      "description": "Bot activity status message",
+      "value": "music | /help",
+      "required": false
+    },
+    "BOT_STATUS": {
+      "description": "Bot presence status (online, idle, dnd, invisible)",
+      "value": "online",
+      "required": false
+    }
+  },
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  }
+}

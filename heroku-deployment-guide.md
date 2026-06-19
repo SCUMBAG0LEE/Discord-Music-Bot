@@ -4,7 +4,23 @@ This guide provides step-by-step instructions on deploying the Discord Music Bot
 
 ---
 
-## 🛠️ Prerequisites
+---
+
+## ⚡ Option 1: One-Click Deploy (using app.json)
+
+If you have this project hosted on GitHub, you can deploy it instantly with Heroku's web interface using the provided `app.json` template:
+
+1. Construct the deploy link using your GitHub repository URL:
+   `https://heroku.com/deploy?template=https://github.com/your-github-username/your-repo-name`
+2. Open that URL in your browser.
+3. Heroku will automatically:
+   - Set the stack to `container`.
+   - Read `app.json` and prompt you to input the Config Vars (`BOT_TOKEN`, `CLIENT_ID`, etc.) via a user-friendly form.
+   - Build the container and automatically start 1 eco/basic `worker` dyno.
+
+---
+
+## 🛠️ Option 2: Manual Deployment (via CLI)
 
 Before you start, make sure you have:
 1. The **Heroku CLI** installed and authenticated (`heroku login`).
