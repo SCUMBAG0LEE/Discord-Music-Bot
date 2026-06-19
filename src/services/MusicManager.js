@@ -74,7 +74,7 @@ try {
         }
     }
 
-    if (!ffmpegInfo.path) { // If custom path was not valid or not provided
+    if (!ffmpegInfo.path || ffmpegInfo.path === 'unknown') { // If custom path was not valid or not provided
         result = spawnSync('ffmpeg', ['-version'], { windowsHide: true });
         if (!result.error && result.stdout) {
             ffmpegInfo.type = 'system ffmpeg';
@@ -89,10 +89,20 @@ try {
         }
     }
 
-    const output = result.stdout.toString();
+    const output = result?.stdout?.toString() || '';
     const match = /version\s+([^\s]+)/.exec(output) || /version ([^\s]+) Copyright/.exec(output);
     ffmpegInfo.version = match ? match[1].replace(/-\w+$/, '') : 'unknown'; // Clean version string
     logger.debug('FFmpeg', `Detected Version: ${ffmpegInfo.version}`);
+
+    // Inject the resolved FFmpeg path into prism-media so it is used during playback
+    const prismFfmpeg = prism.default?.FFmpeg || prism.FFmpeg;
+    if (prismFfmpeg) {
+        prismFfmpeg.getInfo = () => ({
+            command: ffmpegInfo.path,
+            output: output,
+            version: ffmpegInfo.version
+        });
+    }
 } catch (e) {
     logger.error('FFmpeg', 'Error configuring FFmpeg path, using fallback.', e);
 }
