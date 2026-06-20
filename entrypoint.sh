@@ -6,9 +6,9 @@ if [ "$ENABLE_WARP_PROXY" = "true" ]; then
     # Boot the lightweight daemon in the background and log its output
     # We use --cfon (Psiphon mode) to bypass UDP blocks, and -4 because Heroku lacks IPv6 routing
     warp-plus -4 --cfon > warp.log 2>&1 &
-    
-    # Wait briefly for the daemon to initialize its socket
-    sleep 3
+    # Wait for the daemon to initialize its socket and establish the Psiphon tunnel
+    echo "⏳ Waiting 15 seconds for Psiphon tunnel to establish..."
+    sleep 15
     cat warp.log
 
     echo "🚀 Launching Discord Bot with WARP Proxy..."
