@@ -4,8 +4,8 @@ set -e
 if [ "$ENABLE_WARP_PROXY" = "true" ]; then
     echo "🤖 Starting warp-plus (Cloudflare WARP User-Space Proxy)..."
     # Boot the lightweight daemon in the background and log its output
-    # We use --cfon (Psiphon mode) to bypass UDP blocks, and -4 because Heroku lacks IPv6 routing
-    warp-plus -4 --cfon > warp.log 2>&1 &
+    # We use --scan to automatically find an unblocked Cloudflare IP, and -4 to prevent IPv6 crashes
+    warp-plus -4 --scan > warp.log 2>&1 &
     # Wait for the daemon to initialize its socket and establish the Psiphon tunnel
     echo "⏳ Waiting 15 seconds for Psiphon tunnel to establish..."
     sleep 15
