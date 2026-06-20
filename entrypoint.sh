@@ -2,21 +2,12 @@
 set -e
 
 if [ "$ENABLE_WARP_PROXY" = "true" ]; then
-    echo "🤖 Starting Cloudflare WARP Daemon..."
-    # Boot the daemon in the background
-    warp-svc --accept-tos &
+    echo "🤖 Starting warp-plus (Cloudflare WARP User-Space Proxy)..."
+    # Boot the lightweight daemon in the background
+    warp-plus -bind 127.0.0.1:8010 &
 
-    # Wait briefly for the daemon to initialize its socket
+    # Give it a moment to establish the WireGuard tunnel
     sleep 3
-
-    echo "🔑 Configuring SOCKS5 Proxy Mode..."
-    warp-cli --accept-tos registration new || true
-    warp-cli --accept-tos mode proxy
-    warp-cli --accept-tos proxy port 8010
-    warp-cli --accept-tos connect
-
-    # Give WARP a moment to establish the tunnel
-    sleep 2
 
     echo "🚀 Launching Discord Bot with WARP Proxy..."
     # Only route yt-dlp through WARP via SOCKS5
