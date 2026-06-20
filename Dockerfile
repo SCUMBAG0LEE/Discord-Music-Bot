@@ -18,16 +18,20 @@ RUN if [ -f bun.lock ]; then bun install --frozen-lockfile; else bun install; fi
 FROM oven/bun:latest AS runner
 WORKDIR /app
 
-# Install runtime dependencies: Python3 (needed by yt-dlp) and curl
+# Install runtime dependencies: Python3 (needed by yt-dlp), curl, and unzip
 RUN apt-get update && apt-get install -y \
     python3-minimal \
     ca-certificates \
     curl \
+    unzip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Download user-space warp-plus binary for Cloudflare WARP proxy
-RUN curl -L https://github.com/bepass-org/warp-plus/releases/latest/download/warp-plus-linux-amd64 -o /usr/local/bin/warp-plus && \
-    chmod a+rx /usr/local/bin/warp-plus
+# Download user-space warp-plus binary for Cloudflare WARP proxy (extract from ZIP)
+RUN curl -L https://github.com/bepass-org/warp-plus/releases/latest/download/warp-plus_linux-amd64.zip -o warp-plus.zip && \
+    unzip warp-plus.zip && \
+    mv warp-plus /usr/local/bin/warp-plus && \
+    chmod a+rx /usr/local/bin/warp-plus && \
+    rm warp-plus.zip
 
 # Copy the latest static FFmpeg and FFprobe binaries
 COPY --from=mwader/static-ffmpeg:latest /ffmpeg /usr/local/bin/ffmpeg
