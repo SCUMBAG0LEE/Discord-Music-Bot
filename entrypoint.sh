@@ -4,7 +4,8 @@ set -e
 if [ "$ENABLE_WARP_PROXY" = "true" ]; then
     echo "🤖 Starting warp-plus (Cloudflare WARP User-Space Proxy)..."
     # Boot the lightweight daemon in the background and log its output
-    warp-plus > warp.log 2>&1 &
+    # We use --cfon (Psiphon mode) to tunnel over TCP/HTTPS and bypass Heroku UDP blocks
+    warp-plus --cfon > warp.log 2>&1 &
     
     # Wait briefly for the daemon to initialize its socket
     sleep 3
