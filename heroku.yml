@@ -2,4 +2,4 @@ build:
   docker:
     worker: Dockerfile
 run:
-  worker: bun src/index.js
+  worker: ./entrypoint.sh
