@@ -37,6 +37,11 @@ function convertJsonToNetscape(jsonPath, txtPath) {
 export function getYtDlpArgs(baseArgs) {
     const args = [...baseArgs];
     
+    // Add SOCKS5/HTTP Proxy if configured (e.g., from Cloudflare WARP entrypoint)
+    if (process.env.YOUTUBE_PROXY) {
+        args.push('--proxy', process.env.YOUTUBE_PROXY);
+    }
+    
     // Support loading cookies securely from an environment variable (crucial for Heroku/Docker)
     if (process.env.YOUTUBE_COOKIES) {
         const tempCookiePath = path.join(os.tmpdir(), 'youtube-env-cookies.txt');

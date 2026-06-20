@@ -153,6 +153,7 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `STREAM_BUFFER_SIZE` | ❌ | Custom buffer size in MB for stream chunks (e.g. `16`) |
 | `YTDLP_PATH` | ❌ | Override default `yt-dlp` executable path |
 | `FFMPEG_PATH` | ❌ | Override default `ffmpeg` executable path |
+| `ENABLE_WARP_PROXY` | ❌ | Start Cloudflare WARP inside Docker to bypass YouTube IP bans (`true`/`false`) |
 
 > **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
 > | Scenario | Activity |
@@ -321,13 +322,16 @@ bun run dev
 
 ## 🔧 Troubleshooting
 
-### YouTube playback issues
+### YouTube playback issues ("Sign in to confirm you're not a bot")
+- **The Ultimate Fix (Heroku IP Ban):** If you are running the bot on a cloud provider like Heroku, YouTube will often ban the entire datacenter IP block. To fix this:
+  1. Set `ENABLE_WARP_PROXY=true` in your `.env` or Heroku Config Vars.
+  2. Deploy the bot via Docker. This automatically installs and tunnels `yt-dlp` through the Cloudflare WARP residential proxy network.
+- **Using Cookies (Age-restrictions):**
+  1. Export cookies from your browser in **Netscape/Mozilla format** using a browser extension.
+  2. Save the file as `youtube-cookies.txt` in the project root.
+  3. If running on Heroku, paste the Base64-encoded cookie file into the `YOUTUBE_COOKIES` environment variable.
+  4. Ensure you generate the cookies from an IP location matching the bot's server (or use the WARP proxy above to normalize the IP).
 - Ensure yt-dlp is installed and up-to-date: `pip install -U yt-dlp`
-- YouTube may rate-limit requests. Try using cookies:
-  1. Export cookies from your browser in **Netscape/Mozilla format** using a browser extension (e.g., [Get cookies.txt](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc))
-  2. Save the file as `youtube-cookies.txt` in the project root (or `cookies.txt`)
-  3. **JSON format** (e.g. from EditThisCookie) is also accepted — it's converted automatically
-  4. Restart the bot — cookies are loaded automatically
 - If region-restricted: yt-dlp's `--geo-bypass` is enabled by default
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
 

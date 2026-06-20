@@ -18,12 +18,17 @@ RUN if [ -f bun.lock ]; then bun install --frozen-lockfile; else bun install; fi
 FROM oven/bun:latest AS runner
 WORKDIR /app
 
-# Install runtime dependencies: Python3 (needed by yt-dlp) and curl (to fetch yt-dlp)
+# Install runtime dependencies, Cloudflare WARP client, and yt-dlp requirements
 RUN apt-get update && apt-get install -y \
     python3-minimal \
     ca-certificates \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    gnupg2 \
+    lsb-release \
+    && curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflare-client.list \
+    && apt-get update && apt-get install -y cloudflare-warp \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy the latest static FFmpeg and FFprobe binaries
 COPY --from=mwader/static-ffmpeg:latest /ffmpeg /usr/local/bin/ffmpeg
@@ -40,8 +45,14 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copy the rest of the application files
 COPY . .
 
+# Ensure orchestration script is executable
+RUN chmod +x entrypoint.sh
+
 # Set environment variables
 ENV NODE_ENV=production
 
-# Start the bot
-CMD ["bun", "src/index.js"]
+# Expose SOCKS5 port just for explicit documentation
+EXPOSE 8010
+
+# Start the bot via orchestration script
+ENTRYPOINT ["./entrypoint.sh"]
