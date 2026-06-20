@@ -156,6 +156,7 @@ export class DebugCommand extends Command {
         } else {
             debugInfo += `**Voice Connection:** None\n`;
             debugInfo += `**Queue:** Not initialized\n`;
+        }
         const embed = new Embed()
             .setTitle('🛠️ Debug Info')
             .setDescription(debugInfo)
