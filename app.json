@@ -114,9 +114,8 @@
       "description": "Raw content of your Netscape/JSON cookies file to bypass YouTube bot detection/age-gate (Optional)",
       "required": false
     },
-    "ENABLE_WARP_PROXY": {
-      "description": "Enable Cloudflare WARP SOCKS5 proxy to bypass YouTube Datacenter IP bans (true/false)",
-      "value": "false",
+    "YOUTUBE_PROXY": {
+      "description": "Optional HTTP/HTTPS/SOCKS5 proxy URL to route yt-dlp traffic through (e.g. socks5://username:password@ip:port)",
       "required": false
     }
   },

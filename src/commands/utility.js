@@ -33,14 +33,14 @@ export class PingCommand extends Command {
         const wsPing = ctx.client.gateway.latency;
         const latency = Date.now() - start;
 
-        let warpStatus = "⚪ Disabled";
+        let proxyStatus = "⚪ Disabled";
         if (process.env.YOUTUBE_PROXY) {
             try {
-                // SOCKS5 proxy check requires curl
-                const { stdout } = await execFileAsync('curl', ['-s', '-x', process.env.YOUTUBE_PROXY, 'https://cloudflare.com/cdn-cgi/trace'], { timeout: 3000 });
-                warpStatus = stdout.includes('warp=on') ? "🟢 Active & Verified" : "🟡 Reachable, but WARP is OFF";
+                // Test connection to YouTube via the custom proxy (HEAD request, 3s timeout)
+                await execFileAsync('curl', ['-s', '-I', '-x', process.env.YOUTUBE_PROXY, 'https://www.youtube.com', '--connect-timeout', '3'], { timeout: 4000 });
+                proxyStatus = "🟢 Active & Reachable";
             } catch(e) {
-                warpStatus = "🔴 Connection Failed (Not Running)";
+                proxyStatus = "🔴 Connection Failed (Offline/Invalid)";
             }
         }
 
@@ -51,7 +51,7 @@ export class PingCommand extends Command {
                 { name: 'Bot Latency', value: `${latency}ms`, inline: true },
                 { name: 'Websocket Ping', value: `${wsPing}ms`, inline: true },
                 { name: 'API Time', value: `${Date.now() - start}ms`, inline: true },
-                { name: 'Cloudflare WARP Proxy', value: warpStatus, inline: false }
+                { name: 'YouTube Proxy', value: proxyStatus, inline: false }
             );
 
         await ctx.editOrReply({ embeds: [embed] });
@@ -156,17 +156,6 @@ export class DebugCommand extends Command {
         } else {
             debugInfo += `**Voice Connection:** None\n`;
             debugInfo += `**Queue:** Not initialized\n`;
-        }
-
-        if (process.env.ENABLE_WARP_PROXY === 'true') {
-            try {
-                const { stdout } = await execFileAsync('tail', ['-n', '15', 'warp.log']);
-                debugInfo += `\n**WARP Daemon Logs:**\n\`\`\`\n${stdout.substring(0, 1000)}\n\`\`\``;
-            } catch(e) {
-                debugInfo += `\n**WARP Daemon Logs:**\n\`\`\`\nCould not read warp.log\n\`\`\``;
-            }
-        }
-
         const embed = new Embed()
             .setTitle('🛠️ Debug Info')
             .setDescription(debugInfo)

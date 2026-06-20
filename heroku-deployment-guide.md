@@ -80,7 +80,7 @@ heroku config:set CLOUDFLARE_D1_API_TOKEN="your_cloudflare_api_token" -a your-bo
 heroku config:set LOG_LEVEL="INFO" -a your-bot-app-name
 heroku config:set ACTIVITY_TYPE="LISTENING" -a your-bot-app-name
 heroku config:set ACTIVITY_NAME="music | /help" -a your-bot-app-name
-heroku config:set ENABLE_WARP_PROXY="true" -a your-bot-app-name
+heroku config:set YOUTUBE_PROXY="socks5://username:password@ip:port" -a your-bot-app-name
 heroku config:set YOUTUBE_COOKIES="" -a your-bot-app-name
 ```
 

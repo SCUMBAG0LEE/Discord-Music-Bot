@@ -37,7 +37,7 @@ function convertJsonToNetscape(jsonPath, txtPath) {
 export function getYtDlpArgs(baseArgs) {
     const args = [...baseArgs];
     
-    // Add SOCKS5/HTTP Proxy if configured (e.g., from Cloudflare WARP entrypoint)
+    // Add SOCKS5/HTTP Proxy if configured (e.g., YOUTUBE_PROXY environment variable)
     if (process.env.YOUTUBE_PROXY) {
         args.push('--proxy', process.env.YOUTUBE_PROXY);
     }
