@@ -1120,7 +1120,7 @@ export class MusicManager {
                 queue.tempFilePath = null;
             }
 
-            if (!isDirectRadioStream) {
+            if (!isDirectRadioStream && (!song._ytDlpData || !song._ytDlpData.url)) {
                 // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
                 if (song.prefetchFilePath) {
                     // Use the already background-prefetched file (HDD read optimization)
@@ -1183,13 +1183,19 @@ export class MusicManager {
                     '-f', 'opus'
                 ];
             } else {
-                // Direct radio streams cannot be prefetched to EOF (they are infinite)
+                let actualStreamUrl = streamUrl;
+                if (!isDirectRadioStream && song._ytDlpData && song._ytDlpData.url) {
+                    actualStreamUrl = song._ytDlpData.url;
+                    logger.info('MusicManager', `Bypassing proxy download, streaming direct audio URL for: ${song.title}`);
+                }
+
+                // Direct streams cannot be prefetched to EOF (they are infinite or streaming)
                 ffmpegArgs = [
                     '-reconnect', '1',
                     '-reconnect_streamed', '1',
                     '-reconnect_delay_max', '5',
                     '-user_agent', userAgent,
-                    '-i', streamUrl,
+                    '-i', actualStreamUrl,
                     '-analyzeduration', '0',
                     '-loglevel', 'warning',
                     '-vn',
