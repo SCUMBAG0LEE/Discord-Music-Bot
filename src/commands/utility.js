@@ -33,13 +33,25 @@ export class PingCommand extends Command {
         const wsPing = ctx.client.gateway.latency;
         const latency = Date.now() - start;
 
+        let warpStatus = "⚪ Disabled";
+        if (process.env.YOUTUBE_PROXY) {
+            try {
+                // SOCKS5 proxy check requires curl
+                const { stdout } = await execFileAsync('curl', ['-s', '-x', process.env.YOUTUBE_PROXY, 'https://cloudflare.com/cdn-cgi/trace'], { timeout: 3000 });
+                warpStatus = stdout.includes('warp=on') ? "🟢 Active & Verified" : "🟡 Reachable, but WARP is OFF";
+            } catch(e) {
+                warpStatus = "🔴 Connection Failed (Not Running)";
+            }
+        }
+
         const embed = new Embed()
             .setTitle('🏓 Pong!')
             .setColor('#00FF00')
             .addFields(
                 { name: 'Bot Latency', value: `${latency}ms`, inline: true },
                 { name: 'Websocket Ping', value: `${wsPing}ms`, inline: true },
-                { name: 'API Time', value: `${Date.now() - start}ms`, inline: true }
+                { name: 'API Time', value: `${Date.now() - start}ms`, inline: true },
+                { name: 'Cloudflare WARP Proxy', value: warpStatus, inline: false }
             );
 
         await ctx.editOrReply({ embeds: [embed] });
