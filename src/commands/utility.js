@@ -158,6 +158,15 @@ export class DebugCommand extends Command {
             debugInfo += `**Queue:** Not initialized\n`;
         }
 
+        if (process.env.ENABLE_WARP_PROXY === 'true') {
+            try {
+                const { stdout } = await execFileAsync('tail', ['-n', '15', 'warp.log']);
+                debugInfo += `\n**WARP Daemon Logs:**\n\`\`\`\n${stdout.substring(0, 1000)}\n\`\`\``;
+            } catch(e) {
+                debugInfo += `\n**WARP Daemon Logs:**\n\`\`\`\nCould not read warp.log\n\`\`\``;
+            }
+        }
+
         const embed = new Embed()
             .setTitle('🛠️ Debug Info')
             .setDescription(debugInfo)
