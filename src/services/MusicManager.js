@@ -1194,7 +1194,15 @@ export class MusicManager {
                     '-reconnect', '1',
                     '-reconnect_streamed', '1',
                     '-reconnect_delay_max', '5',
-                    '-user_agent', userAgent,
+                    '-user_agent', userAgent
+                ];
+
+                // If proxy is active, FFmpeg must route the stream through it to prevent IP mismatch 403s
+                if (process.env.YOUTUBE_PROXY && actualStreamUrl.includes('googlevideo.com')) {
+                    ffmpegArgs.push('-http_proxy', process.env.YOUTUBE_PROXY);
+                }
+
+                ffmpegArgs.push(
                     '-i', actualStreamUrl,
                     '-analyzeduration', '0',
                     '-loglevel', 'warning',
@@ -1202,7 +1210,7 @@ export class MusicManager {
                     '-c:a', 'libopus',
                     '-b:a', '96k',
                     '-f', 'opus'
-                ];
+                );
             }
 
             const ffmpegProcess = new prism.FFmpeg({ args: ffmpegArgs });
