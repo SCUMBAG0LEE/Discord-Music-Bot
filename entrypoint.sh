@@ -10,7 +10,7 @@ if [ "$ENABLE_WARP_PROXY" = "true" ]; then
     sleep 3
 
     echo "🔑 Configuring SOCKS5 Proxy Mode..."
-    warp-cli --accept-tos registration register || true
+    warp-cli --accept-tos registration new || true
     warp-cli --accept-tos mode proxy
     warp-cli --accept-tos proxy port 8010
     warp-cli --accept-tos connect
