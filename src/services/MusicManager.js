@@ -571,7 +571,7 @@ async function getTrackInfo(query, searchPrefix = '') {
         try {
             const args = getYtDlpArgs([
                 '-j', 
-                '-f', 'bestaudio/best', 
+                '-f', '251/bestaudio/best', 
                 '--extractor-args', 'youtube:player_client=ios,tv,android,mweb,web',
                 '--socket-timeout', '15', 
                 '--no-warnings', 
@@ -1045,7 +1045,7 @@ export class MusicManager {
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
             const ytdlpArgs = getYtDlpArgs([
-                '-f', 'bestaudio/best', 
+                '-f', '251/bestaudio/best', 
                 '--extractor-args', 'youtube:player_client=ios,tv,android,mweb,web',
                 '-o', tempFilePath, 
                 '--no-part', 
@@ -1145,7 +1145,7 @@ export class MusicManager {
                     queue.tempFilePath = tempFilePath;
                     
                     const ytdlpArgs = getYtDlpArgs([
-                        '-f', 'bestaudio/best', 
+                        '-f', '251/bestaudio/best', 
                         '--extractor-args', 'youtube:player_client=ios,tv,android,mweb,web',
                         '-o', tempFilePath, 
                         '--no-part', 
