@@ -572,7 +572,7 @@ async function getTrackInfo(query, searchPrefix = '') {
             const args = getYtDlpArgs([
                 '-j', 
                 '-f', '251/bestaudio/best', 
-                '--extractor-args', 'youtube:player_client=android,tv,ios,mweb,web',
+                '--extractor-args', 'youtube:player_client=web,mweb,tv,android,ios',
                 '--socket-timeout', '15', 
                 '--no-warnings', 
                 target
@@ -1046,7 +1046,7 @@ export class MusicManager {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
             const ytdlpArgs = getYtDlpArgs([
                 '-f', '251/bestaudio/best', 
-                '--extractor-args', 'youtube:player_client=android,tv,ios,mweb,web',
+                '--extractor-args', 'youtube:player_client=web,mweb,tv,android,ios',
                 '-o', tempFilePath, 
                 '--no-part', 
                 '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, 
@@ -1146,7 +1146,7 @@ export class MusicManager {
                     
                     const ytdlpArgs = getYtDlpArgs([
                         '-f', '251/bestaudio/best', 
-                        '--extractor-args', 'youtube:player_client=android,tv,ios,mweb,web',
+                        '--extractor-args', 'youtube:player_client=web,mweb,tv,android,ios',
                         '-o', tempFilePath, 
                         '--no-part', 
                         '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, 
