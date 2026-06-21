@@ -302,6 +302,12 @@ export class SystemDebugCommand extends Command {
             if (guilds) guildCount = guilds.length;
         } catch (e) {}
 
+        let systemIp = 'Fetch Failed';
+        try {
+            const res = await fetch('https://ifconfig.me', { signal: AbortSignal.timeout(3000) });
+            systemIp = (await res.text()).trim();
+        } catch(e) {}
+
         const embed = new Embed()
             .setTitle('🔧 Bot Diagnostics')
             .setColor('#FF6B6B')
@@ -319,6 +325,11 @@ export class SystemDebugCommand extends Command {
                 { 
                     name: '🎵 Playback status', 
                     value: `Active Queues: ${activeQueues}`, 
+                    inline: true 
+                },
+                { 
+                    name: '🌐 Network', 
+                    value: `System IP: \`${systemIp}\``, 
                     inline: true 
                 }
             ])
