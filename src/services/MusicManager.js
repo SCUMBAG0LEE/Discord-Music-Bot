@@ -564,32 +564,43 @@ async function getTrackInfo(query, searchPrefix = '') {
     const isUrl = query.startsWith('http://') || query.startsWith('https://');
     const target = isUrl ? query : `${searchPrefix}${query}`;
     
-    try {
-        const args = getYtDlpArgs([
-            '-j', 
-            '-f', 'bestaudio/best', 
-            '--extractor-args', 'youtube:player_client=ios,tv,android,mweb,web',
-            '--socket-timeout', '15', 
-            '--no-warnings', 
-            target
-        ]);
-        const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
-        const lines = stdout.trim().split('\n').filter(Boolean);
-        if (lines.length === 0) throw new Error("No data returned from yt-dlp.");
-        const firstLine = lines[0];
-        const data = JSON.parse(firstLine);
-        
-        return {
-            title: data.title || data.fulltitle,
-            originalUrl: data.webpage_url || target,
-            durationInSec: data.duration,
-            durationRaw: data.duration ? `${Math.floor(data.duration / 60)}:${(data.duration % 60).toString().padStart(2, '0')}` : 'Live/Unknown',
-            sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other'),
-            _ytDlpData: data
-        };
-    } catch (e) {
-        throw new Error(`Failed to extract track info: ${e.message}`);
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const args = getYtDlpArgs([
+                '-j', 
+                '-f', 'bestaudio/best', 
+                '--extractor-args', 'youtube:player_client=ios,tv,android,mweb,web',
+                '--socket-timeout', '15', 
+                '--no-warnings', 
+                target
+            ]);
+            const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
+            const lines = stdout.trim().split('\n').filter(Boolean);
+            if (lines.length === 0) throw new Error("No data returned from yt-dlp.");
+            const firstLine = lines[0];
+            const data = JSON.parse(firstLine);
+            
+            return {
+                title: data.title || data.fulltitle,
+                originalUrl: data.webpage_url || target,
+                durationInSec: data.duration,
+                durationRaw: data.duration ? `${Math.floor(data.duration / 60)}:${(data.duration % 60).toString().padStart(2, '0')}` : 'Live/Unknown',
+                sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other'),
+                _ytDlpData: data
+            };
+        } catch (e) {
+            lastError = e;
+            if (attempt < maxRetries) {
+                console.warn(`[getTrackInfo] Attempt ${attempt} failed for ${target}, retrying... (${e.message})`);
+                await new Promise(res => setTimeout(res, 2000 * attempt)); // Backoff: 2s, 4s
+            }
+        }
     }
+    
+    throw new Error(`Failed to extract track info after ${maxRetries} attempts: ${lastError.message}`);
 }
 
 import { ActionRow, Button, Embed } from 'seyfert';
