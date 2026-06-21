@@ -304,8 +304,10 @@ export class SystemDebugCommand extends Command {
 
         let systemIp = 'Fetch Failed';
         try {
-            const res = await fetch('https://ifconfig.me', { signal: AbortSignal.timeout(3000) });
-            systemIp = (await res.text()).trim();
+            // Use api.ipify.org as it strictly returns raw text, and truncate to prevent 1024 char embed limit crashes
+            const res = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(3000) });
+            const rawText = await res.text();
+            systemIp = rawText.trim().substring(0, 50);
         } catch(e) {}
 
         const embed = new Embed()
