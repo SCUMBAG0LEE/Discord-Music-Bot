@@ -35,10 +35,12 @@ export class PingCommand extends Command {
 
         let proxyStatus = "⚪ Disabled";
         if (process.env.YOUTUBE_PROXY) {
+            const proxyStart = Date.now();
             try {
                 // Test connection to YouTube via the custom proxy (HEAD request, 3s timeout)
                 await execFileAsync('curl', ['-s', '-I', '-x', process.env.YOUTUBE_PROXY, 'https://www.youtube.com', '--connect-timeout', '3'], { timeout: 4000 });
-                proxyStatus = "🟢 Active & Reachable";
+                const proxyLatency = Date.now() - proxyStart;
+                proxyStatus = `🟢 ${proxyLatency}ms`;
             } catch(e) {
                 proxyStatus = "🔴 Connection Failed (Offline/Invalid)";
             }
