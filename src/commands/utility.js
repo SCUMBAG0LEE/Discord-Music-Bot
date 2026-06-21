@@ -4,7 +4,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { musicManager, ffmpegInfo, hardwareOptimization } from '../services/MusicManager.js';
 import { getVoiceConnection } from '@discordjs/voice';
-
+import { isOwner } from '../utils/permissions.js';
 const execFileAsync = promisify(execFile);
 
 function formatDuration(seconds) {
@@ -131,6 +131,16 @@ export class DebugCommand extends Command {
             debugInfo += `**yt-dlp Path:** \`${process.env.YTDLP_PATH || 'yt-dlp'}\`\n**yt-dlp Version:** \`Error/Not Found\`\n\n`;
         }
         
+        if (isOwner(ctx.author.id)) {
+            try {
+                const res = await fetch('https://ifconfig.me', { signal: AbortSignal.timeout(3000) });
+                const ipOut = await res.text();
+                debugInfo += `**System IP:** \`${ipOut.trim()}\`\n\n`;
+            } catch(e) {
+                debugInfo += `**System IP:** \`Fetch Failed\`\n\n`;
+            }
+        }
+
         debugInfo += `**Hardware Optimization:**\n`;
         debugInfo += `> **Threads:** \`${hardwareOptimization.threads}\`\n`;
         debugInfo += `> **Buffer:** \`${hardwareOptimization.bufferSizeMB} MB\`\n`;
