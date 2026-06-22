@@ -1,5 +1,6 @@
 import { Command, Declare } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
+import { getVoiceConnection } from '@discordjs/voice';
 import { verifyVoiceConnection } from '../utils/permissions.js';
 
 @Declare({
@@ -9,12 +10,15 @@ import { verifyVoiceConnection } from '../utils/permissions.js';
 export default class StopCommand extends Command {
     async run(ctx) {
         const queue = musicManager.getQueue(ctx.guildId);
+        const connection = getVoiceConnection(ctx.guildId);
         
-        if (!queue) {
-            return ctx.write({ content: 'There is no music playing.', flags: 64 });
+        if (!queue && !connection) {
+            return ctx.write({ content: 'There is no music playing and the bot is not in a voice channel.', flags: 64 });
         }
         
-        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
+        // Ensure user is in the same voice channel as the bot (even if queue is null)
+        const mockQueue = queue || { voiceChannelId: connection?.joinConfig?.channelId };
+        const voiceChannelId = await verifyVoiceConnection(ctx, mockQueue, false);
         if (!voiceChannelId) return;
         
         musicManager.leave(ctx.guildId);
