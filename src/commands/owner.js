@@ -277,12 +277,12 @@ export class ShutdownCommand extends Command {
     }
 }
 
-// 7. Debug Command
+// 7. System Info Command
 @Declare({
-    name: 'systemdebug',
-    description: 'Show bot runtime diagnostics (Owner only)'
+    name: 'systeminfo',
+    description: 'Show host server and bot runtime diagnostics (Owner only)'
 })
-export class SystemDebugCommand extends Command {
+export class SystemInfoCommand extends Command {
     async run(ctx) {
         if (!isOwner(ctx.member.id)) return ownerOnlyError(ctx);
 

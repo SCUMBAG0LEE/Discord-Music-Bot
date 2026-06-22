@@ -62,51 +62,11 @@ export class PingCommand extends Command {
     }
 }
 
-@Declare({
-    name: 'stats',
-    description: 'Show bot statistics'
-})
-export class StatsCommand extends Command {
-    async run(ctx) {
-        try {
-            await ctx.deferReply();
-        } catch (e) {
-            console.warn(`[StatsCommand] Failed to defer:`, e.message || e);
-            return;
-        }
-
-        const uptime = formatDuration(Math.floor(process.uptime()));
-        const memUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
-        
-        let ytdlpVersion = 'Unknown';
-        try {
-            const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-            const { stdout } = await execFileAsync(ytdlpPath, ['--version']);
-            ytdlpVersion = stdout.trim();
-        } catch(e) {
-            ytdlpVersion = 'Error';
-        }
-
-        const embed = new Embed()
-            .setTitle('📊 Bot Statistics')
-            .setColor('#5865F2')
-            .addFields(
-                { name: '⏱️ Uptime', value: uptime, inline: true },
-                { name: '💾 Memory', value: `${memUsage} MB`, inline: true },
-                { name: '📡 Runtime', value: typeof Bun !== 'undefined' ? `Bun v${Bun.version}` : `Node ${process.version}`, inline: true },
-                { name: '💻 Platform', value: `${os.platform()} ${os.arch()}`, inline: true },
-                { name: '🎵 FFmpeg', value: `${ffmpegInfo.type}\n(v${ffmpegInfo.version})`, inline: true },
-                { name: '📥 yt-dlp', value: `v${ytdlpVersion}`, inline: true }
-            )
-            .setFooter({ text: 'Powered by Seyfert' });
-
-        await ctx.editOrReply({ embeds: [embed] });
-    }
-}
+// StatsCommand merged into DebugCommand
 
 @Declare({
     name: 'debug',
-    description: 'Show advanced debugging information for the music player'
+    description: 'Show advanced debugging information for the bot and music player'
 })
 export class DebugCommand extends Command {
     async run(ctx) {
@@ -120,19 +80,27 @@ export class DebugCommand extends Command {
         const queue = musicManager.getQueue(ctx.guildId);
         const connection = getVoiceConnection(ctx.guildId);
 
-        let debugInfo = `**Shard ID:** ${ctx.shardId}\n`;
-        debugInfo += `**Gateway Ping:** ${ctx.client.gateway.latency}ms\n\n`;
-        
-        debugInfo += `**FFmpeg Path:** \`${ffmpegInfo.path}\`\n**FFmpeg Version:** \`${ffmpegInfo.version}\`\n`;
+        const uptime = formatDuration(Math.floor(process.uptime()));
+        const memUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+        const runtime = typeof Bun !== 'undefined' ? `Bun v${Bun.version}` : `Node ${process.version}`;
 
+        let debugInfo = `**Bot Status:**\n`;
+        debugInfo += `> **Uptime:** \`${uptime}\`\n`;
+        debugInfo += `> **Memory:** \`${memUsage} MB\`\n`;
+        debugInfo += `> **Runtime:** \`${runtime}\` (${os.platform()} ${os.arch()})\n`;
+        debugInfo += `> **Gateway Ping:** \`${ctx.client.gateway.latency}ms\`\n\n`;
+
+        let ytdlpVersion = 'Error/Not Found';
+        const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
         try {
-            const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
             const { stdout } = await execFileAsync(ytdlpPath, ['--version']);
-            debugInfo += `**yt-dlp Path:** \`${ytdlpPath}\`\n**yt-dlp Version:** \`${stdout.trim()}\`\n\n`;
-        } catch(e) {
-            debugInfo += `**yt-dlp Path:** \`${process.env.YTDLP_PATH || 'yt-dlp'}\`\n**yt-dlp Version:** \`Error/Not Found\`\n\n`;
-        }
-        
+            ytdlpVersion = stdout.trim();
+        } catch(e) {}
+
+        debugInfo += `**Music Engine:**\n`;
+        debugInfo += `> **FFmpeg:** \`v${ffmpegInfo.version}\` (${ffmpegInfo.type})\n`;
+        debugInfo += `> **yt-dlp:** \`v${ytdlpVersion}\`\n\n`;
+
         const hasCookies = fs.existsSync(path.join(process.cwd(), 'cookies.txt')) || fs.existsSync(path.join(process.cwd(), 'youtube-cookies.txt')) || !!process.env.YOUTUBE_COOKIES;
         let pluginStatus = 'Unknown';
         try {
@@ -144,9 +112,8 @@ export class DebugCommand extends Command {
         }
         debugInfo += `**YouTube Bypasses:**\n`;
         debugInfo += `> **Cookies:** \`${hasCookies ? 'Loaded' : 'None'}\`\n`;
+        debugInfo += `> **User-Agent:** \`${process.env.YOUTUBE_USER_AGENT ? 'Custom' : 'Default'}\`\n`;
         debugInfo += `> **PoToken Plugin:** \`${pluginStatus}\`\n\n`;
-        
-
 
         debugInfo += `**Hardware Optimization:**\n`;
         debugInfo += `> **Threads:** \`${hardwareOptimization.threads}\`\n`;
@@ -220,7 +187,7 @@ export class HelpCommand extends Command {
                 { name: '🎶 Playing Music', value: '`/play` `/search` `/lyrics`', inline: true },
                 { name: '⏯️ Playback Control', value: '`/pause` `/resume` `/stop` `/volume`', inline: true },
                 { name: '📋 Queue', value: '`/queue` `/nowplaying` `/shuffle` `/clear` `/remove` `/move` `/jump`', inline: true },
-                { name: '🔧 Utility', value: '`/help` `/ping` `/stats`', inline: true }
+                { name: '🔧 Utility', value: '`/help` `/ping` `/debug`', inline: true }
             )
             .setFooter({ text: 'Powered by Seyfert' });
 

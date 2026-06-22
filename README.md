@@ -264,7 +264,7 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 |---------|-------------|
 | `/help` | Show all commands |
 | `/ping` | Check bot latency |
-| `/stats` | Bot statistics |
+| `/debug` | Show bot stats and music player diagnostics |
 | `/lyrics` | Get song lyrics |
 
 ### 👑 Owner (Bot Owner Only)
@@ -276,7 +276,7 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/setstatus <status>` | Set bot status (online/idle/dnd/invisible) |
 | `/setgame <activity>` | Set bot activity (Playing/Listening/Watching/Competing/Streaming) |
 | `/shutdown` | Shut down the bot |
-| `/debug` | Show bot debug info |
+| `/systeminfo` | Show host server diagnostics |
 | `/eval <code>` | Evaluate JavaScript (⚠️ dangerous) |
 | `/servers` | List all servers the bot is in |
 | `/leaveserver <id>` | Leave a server |
