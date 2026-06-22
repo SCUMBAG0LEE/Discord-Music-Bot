@@ -85,6 +85,7 @@ export class DebugCommand extends Command {
         const runtime = typeof Bun !== 'undefined' ? `Bun v${Bun.version}` : `Node ${process.version}`;
 
         let debugInfo = `**Bot Status:**\n`;
+        debugInfo += `> **Shard ID:** \`${ctx.shardId}\`\n`;
         debugInfo += `> **Uptime:** \`${uptime}\`\n`;
         debugInfo += `> **Memory:** \`${memUsage} MB\`\n`;
         debugInfo += `> **Runtime:** \`${runtime}\` (${os.platform()} ${os.arch()})\n`;
@@ -99,7 +100,9 @@ export class DebugCommand extends Command {
 
         debugInfo += `**Music Engine:**\n`;
         debugInfo += `> **FFmpeg:** \`v${ffmpegInfo.version}\` (${ffmpegInfo.type})\n`;
-        debugInfo += `> **yt-dlp:** \`v${ytdlpVersion}\`\n\n`;
+        debugInfo += `> **Path:** \`${ffmpegInfo.path}\`\n`;
+        debugInfo += `> **yt-dlp:** \`v${ytdlpVersion}\`\n`;
+        debugInfo += `> **Path:** \`${ytdlpPath}\`\n\n`;
 
         const hasCookies = fs.existsSync(path.join(process.cwd(), 'cookies.txt')) || fs.existsSync(path.join(process.cwd(), 'youtube-cookies.txt')) || !!process.env.YOUTUBE_COOKIES;
         let pluginStatus = 'Unknown';

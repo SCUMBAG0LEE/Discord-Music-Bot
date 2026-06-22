@@ -1,4 +1,5 @@
 import { Command, Declare, Options, Embed, createStringOption, createBooleanOption, createAttachmentOption } from 'seyfert';
+import os from 'os';
 import { musicManager } from '../services/MusicManager.js';
 import { isOwner, ownerOnlyError } from '../utils/permissions.js';
 
@@ -310,29 +311,41 @@ export class SystemInfoCommand extends Command {
             systemIp = rawText.trim().substring(0, 50);
         } catch(e) {}
 
+        const cpus = os.cpus();
+        const cpuModel = cpus[0]?.model || 'Unknown CPU';
+        const coreCount = cpus.length;
+        const totalMem = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
+        const freeMem = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
+        const osInfo = `${os.type()} ${os.release()} (${os.arch()})`;
+
         const embed = new Embed()
-            .setTitle('🔧 Bot Diagnostics')
+            .setTitle('🔧 Host Server Diagnostics')
             .setColor('#FF6B6B')
             .addFields([
                 { 
                     name: '🤖 Bot Status', 
-                    value: `Guilds: ${guildCount}\nUptime: ${uptimeStr}`, 
+                    value: `Guilds: ${guildCount}\nUptime: ${uptimeStr}\nActive Streams: ${activeQueues}`, 
                     inline: true 
                 },
                 { 
-                    name: '💾 Memory Usage', 
+                    name: '💾 Memory (Node.js)', 
                     value: `Heap Used: ${(used.heapUsed / 1024 / 1024).toFixed(2)} MB\nRSS: ${(used.rss / 1024 / 1024).toFixed(2)} MB`, 
-                    inline: true 
-                },
-                { 
-                    name: '🎵 Playback status', 
-                    value: `Active Queues: ${activeQueues}`, 
                     inline: true 
                 },
                 { 
                     name: '🌐 Network', 
                     value: `System IP: \`${systemIp}\``, 
                     inline: true 
+                },
+                { 
+                    name: '🖥️ Hardware Specs', 
+                    value: `**CPU:** ${cpuModel}\n**Cores:** ${coreCount}\n**RAM:** ${freeMem} GB free / ${totalMem} GB total`, 
+                    inline: false 
+                },
+                { 
+                    name: '🐧 OS Platform', 
+                    value: `\`${osInfo}\``, 
+                    inline: false 
                 }
             ])
             .setTimestamp();
