@@ -117,6 +117,10 @@
     "YOUTUBE_PROXY": {
       "description": "Optional HTTP/HTTPS/SOCKS5 proxy URL to route yt-dlp traffic through (e.g. socks5://username:password@ip:port)",
       "required": false
+    },
+    "YOUTUBE_USER_AGENT": {
+      "description": "The exact User-Agent string of the browser used to export your cookies, used to bypass Cloudflare/YouTube bot checks (Optional)",
+      "required": false
     }
   },
   "formation": {

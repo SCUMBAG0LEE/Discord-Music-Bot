@@ -42,6 +42,11 @@ export function getYtDlpArgs(baseArgs) {
         args.push('--proxy', process.env.YOUTUBE_PROXY);
     }
     
+    // Add custom User-Agent if provided (Helps match frozen cookies)
+    if (process.env.YOUTUBE_USER_AGENT) {
+        args.push('--user-agent', process.env.YOUTUBE_USER_AGENT);
+    }
+    
     // Support loading cookies securely from an environment variable (crucial for Heroku/Docker)
     if (process.env.YOUTUBE_COOKIES) {
         try {
