@@ -153,7 +153,8 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `STREAM_BUFFER_SIZE` | ❌ | Custom buffer size in MB for stream chunks (e.g. `16`) |
 | `YTDLP_PATH` | ❌ | Override default `yt-dlp` executable path |
 | `FFMPEG_PATH` | ❌ | Override default `ffmpeg` executable path |
-| `YOUTUBE_PROXY` | ❌ | Optional HTTP/SOCKS5 proxy URL to route yt-dlp traffic through to bypass IP blocks |
+| `YOUTUBE_PROXY` | ❌ | Optional HTTP/SOCKS5 proxy URL to route yt-dlp traffic through to bypass hard IP blocks |
+| `YOUTUBE_COOKIES_FILE` | ❌ | Override default `cookies.txt` path with an absolute file path |
 
 > **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
 > | Scenario | Activity |
@@ -322,15 +323,14 @@ bun run dev
 
 ## 🔧 Troubleshooting
 
-### YouTube playback issues ("Sign in to confirm you're not a bot")
-- **Using a Proxy (Recommended for Heroku/Datacenter hosts):** If you are running the bot on a cloud provider like Heroku, YouTube will often block the entire datacenter IP range. To bypass this:
-  1. Obtain a custom HTTP, HTTPS, or SOCKS5 proxy (e.g. from a residential/private proxy provider).
-  2. Set the `YOUTUBE_PROXY` environment variable or Heroku Config Var to your proxy URL (e.g., `socks5://username:password@ip:port` or `http://ip:port`). All yt-dlp requests will automatically route through it.
-- **Using Cookies:**
-  1. Export cookies from your browser in **Netscape/Mozilla format** using a browser extension.
-  2. Save the file as `youtube-cookies.txt` in the project root.
-  3. If running on Heroku, paste the Base64-encoded cookie file content into the `YOUTUBE_COOKIES` environment variable.
-  4. Ensure you generate the cookies from a browser logged-in location matching the proxy's location if a proxy is used.
+### YouTube playback issues ("Sign in to confirm you're not a bot" / "Requested format is not available")
+- **The Twin-Engine Bypass (Required for Server/Cloud hosts):** If you are running the bot on an Ubuntu server or cloud provider, YouTube will aggressively block your datacenter IP. You must use both a PO Token Plugin and a Frozen Cookie file to bypass this blockwall.
+  1. **Install the Plugin:** Run `pip install yt-dlp-getpot-wpc` in the exact same Python environment where your `yt-dlp` binary is located. This plugin invisibly opens a headless browser to solve YouTube's cryptographic PoW challenges on the fly.
+  2. **The "Frozen" Cookie Trick:** Open a brand new Incognito window in your desktop browser, log into YouTube (preferably using a throwaway account), and *immediately* export the cookies in **Netscape/Mozilla format** before clicking on any videos. Close the window immediately to "freeze" the session and prevent token rotation.
+  3. **Load the Cookies:** Save the exported file as `cookies.txt` or `youtube-cookies.txt` in the bot's root directory. The bot will automatically detect it and feed it to yt-dlp to bypass age-restrictions alongside the plugin's token.
+- **Using a Proxy (For Hard IP Blocks):** Even with cookies and tokens, YouTube may outright ban your server's IP address at the TCP level. If this happens:
+  1. Obtain a custom HTTP, HTTPS, or SOCKS5 proxy (e.g. from a residential proxy provider).
+  2. Set the `YOUTUBE_PROXY` environment variable to your proxy URL (e.g., `socks5://username:password@ip:port`). All yt-dlp requests will automatically route through it.
 - Ensure yt-dlp is installed and up-to-date: `pip install -U yt-dlp`
 - If region-restricted: yt-dlp's `--geo-bypass` is enabled by default
 - Ensure FFmpeg is properly installed: `ffmpeg -version`

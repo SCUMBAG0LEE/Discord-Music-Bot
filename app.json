@@ -111,7 +111,7 @@
       "required": false
     },
     "YOUTUBE_COOKIES": {
-      "description": "Raw content of your Netscape/JSON cookies file to bypass YouTube bot detection/age-gate (Optional)",
+      "description": "Base64 encoded string OR a relative/absolute file path to your Netscape cookies file (Optional, crucial for Heroku)",
       "required": false
     },
     "YOUTUBE_PROXY": {

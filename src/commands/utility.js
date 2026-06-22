@@ -1,5 +1,7 @@
 import { Command, Declare, Embed, Options, createStringOption } from 'seyfert';
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { musicManager, ffmpegInfo, hardwareOptimization } from '../services/MusicManager.js';
@@ -130,6 +132,19 @@ export class DebugCommand extends Command {
         } catch(e) {
             debugInfo += `**yt-dlp Path:** \`${process.env.YTDLP_PATH || 'yt-dlp'}\`\n**yt-dlp Version:** \`Error/Not Found\`\n\n`;
         }
+        
+        const hasCookies = fs.existsSync(path.join(process.cwd(), 'cookies.txt')) || fs.existsSync(path.join(process.cwd(), 'youtube-cookies.txt')) || (process.env.YOUTUBE_COOKIES_FILE && fs.existsSync(process.env.YOUTUBE_COOKIES_FILE));
+        let pluginStatus = 'Unknown';
+        try {
+            const pipPath = process.env.YTDLP_PATH ? process.env.YTDLP_PATH.replace('yt-dlp', 'pip') : 'pip';
+            const { stdout } = await execFileAsync(pipPath, ['show', 'yt-dlp-getpot-wpc']);
+            pluginStatus = stdout.includes('Version:') ? 'Active' : 'Not Installed';
+        } catch (e) {
+            pluginStatus = 'Not Installed';
+        }
+        debugInfo += `**YouTube Bypasses:**\n`;
+        debugInfo += `> **Cookies:** \`${hasCookies ? 'Loaded' : 'None'}\`\n`;
+        debugInfo += `> **PoToken Plugin:** \`${pluginStatus}\`\n\n`;
         
 
 

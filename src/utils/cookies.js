@@ -44,11 +44,27 @@ export function getYtDlpArgs(baseArgs) {
     
     // Support loading cookies securely from an environment variable (crucial for Heroku/Docker)
     if (process.env.YOUTUBE_COOKIES) {
-        const tempCookiePath = path.join(os.tmpdir(), 'youtube-env-cookies.txt');
         try {
             let cookieContent = process.env.YOUTUBE_COOKIES.trim();
             
-            // Check if it's Base64 encoded (fails to start with typical Netscape header or JSON brackets)
+            // 1. Check if the variable is a file path (absolute or relative)
+            try {
+                // Avoid checking massive Base64 strings as file paths
+                if (cookieContent.length < 1000) {
+                    const resolvedPath = path.resolve(process.cwd(), cookieContent);
+                    if (fs.existsSync(resolvedPath)) {
+                        console.log(`[CookieParser] Using cookie path from environment: ${resolvedPath}`);
+                        args.push('--cookies', resolvedPath);
+                        return args;
+                    }
+                }
+            } catch (e) {
+                // Ignore path resolution errors and fall back to string parsing
+            }
+
+            const tempCookiePath = path.join(os.tmpdir(), 'youtube-env-cookies.txt');
+            
+            // 2. Check if it's Base64 encoded (fails to start with typical Netscape header or JSON brackets)
             if (!cookieContent.startsWith('#') && !cookieContent.startsWith('[')) {
                 try {
                     const decoded = Buffer.from(cookieContent, 'base64').toString('utf8');
