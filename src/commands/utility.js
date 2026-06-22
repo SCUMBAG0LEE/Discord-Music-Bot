@@ -133,7 +133,7 @@ export class DebugCommand extends Command {
             debugInfo += `**yt-dlp Path:** \`${process.env.YTDLP_PATH || 'yt-dlp'}\`\n**yt-dlp Version:** \`Error/Not Found\`\n\n`;
         }
         
-        const hasCookies = fs.existsSync(path.join(process.cwd(), 'cookies.txt')) || fs.existsSync(path.join(process.cwd(), 'youtube-cookies.txt')) || (process.env.YOUTUBE_COOKIES_FILE && fs.existsSync(process.env.YOUTUBE_COOKIES_FILE));
+        const hasCookies = fs.existsSync(path.join(process.cwd(), 'cookies.txt')) || fs.existsSync(path.join(process.cwd(), 'youtube-cookies.txt')) || !!process.env.YOUTUBE_COOKIES;
         let pluginStatus = 'Unknown';
         try {
             const pipPath = process.env.YTDLP_PATH ? process.env.YTDLP_PATH.replace('yt-dlp', 'pip') : 'pip';
