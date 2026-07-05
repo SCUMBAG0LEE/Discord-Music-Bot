@@ -116,7 +116,18 @@ export class DebugCommand extends Command {
         debugInfo += `**YouTube Bypasses:**\n`;
         debugInfo += `> **Cookies:** \`${hasCookies ? 'Loaded' : 'None'}\`\n`;
         debugInfo += `> **User-Agent:** \`${process.env.YOUTUBE_USER_AGENT ? 'Custom' : 'Default'}\`\n`;
-        debugInfo += `> **PoToken Plugin:** \`${pluginStatus}\`\n\n`;
+        debugInfo += `> **PoToken Plugin:** \`${pluginStatus}\`\n`;
+
+        const proxyUrl = process.env.YOUTUBE_PROXY;
+        if (proxyUrl) {
+            const isSocks = proxyUrl.toLowerCase().startsWith('socks');
+            const proxyType = isSocks ? 'SOCKS5' : 'HTTP';
+            const streamMode = isSocks ? 'Download-to-file (FFmpeg cannot use SOCKS)' : 'Direct stream via FFmpeg';
+            debugInfo += `> **Proxy:** \`${proxyType}\` → \`${streamMode}\`\n`;
+        } else {
+            debugInfo += `> **Proxy:** \`None\`\n`;
+        }
+        debugInfo += `\n`;
 
         debugInfo += `**Hardware Optimization:**\n`;
         debugInfo += `> **Threads:** \`${hardwareOptimization.threads}\`\n`;

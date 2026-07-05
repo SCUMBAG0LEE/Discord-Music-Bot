@@ -123,9 +123,8 @@ export function createSeyfertAdapter(client, guildId) {
                     payload.d.self_deaf = true; // High performance (deafens bot to avoid processing incoming voice packets)
                 }
                 const shardId = client.gateway.calculateShardId(guildId);
-                const finalPayload = JSON.parse(JSON.stringify(payload));
-                console.log('[Voice Payload Dump]:', JSON.stringify(finalPayload));
-                client.gateway.send(shardId, finalPayload);
+                logger.debug('Voice', `Payload [op:${payload.op}] -> shard ${shardId} for guild ${guildId}`);
+                client.gateway.send(shardId, payload);
                 return true;
             },
             destroy: () => {
@@ -1139,6 +1138,8 @@ export class MusicManager {
             if (!isDirectRadioStream && (!hasDirectUrl || isSocksProxy)) {
                 if (isSocksProxy && hasDirectUrl) {
                     logger.info('MusicManager', `SOCKS proxy detected — using yt-dlp download instead of direct FFmpeg streaming for: ${song.title}`);
+                    // Clear the stale IP-locked URL so fallback retries don't leak it back into the direct streaming path
+                    delete song._ytDlpData.url;
                 }
                 // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
                 if (song.prefetchFilePath) {
