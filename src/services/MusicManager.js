@@ -1129,7 +1129,17 @@ export class MusicManager {
                 queue.tempFilePath = null;
             }
 
-            if (!isDirectRadioStream && (!song._ytDlpData || !song._ytDlpData.url)) {
+            // Force download-to-file path when using a SOCKS proxy, since FFmpeg's -http_proxy
+            // only supports HTTP proxies. SOCKS5 URLs are silently ignored by FFmpeg, causing
+            // IP mismatch 403s on YouTube's IP-locked audio URLs.
+            const proxyUrl = process.env.YOUTUBE_PROXY || '';
+            const isSocksProxy = proxyUrl.toLowerCase().startsWith('socks');
+            const hasDirectUrl = !isDirectRadioStream && song._ytDlpData && song._ytDlpData.url;
+
+            if (!isDirectRadioStream && (!hasDirectUrl || isSocksProxy)) {
+                if (isSocksProxy && hasDirectUrl) {
+                    logger.info('MusicManager', `SOCKS proxy detected — using yt-dlp download instead of direct FFmpeg streaming for: ${song.title}`);
+                }
                 // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
                 if (song.prefetchFilePath) {
                     // Use the already background-prefetched file (HDD read optimization)

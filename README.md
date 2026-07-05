@@ -333,6 +333,7 @@ bun run dev
 - **Using a Proxy (For Hard IP Blocks):** Even with cookies and tokens, YouTube may outright ban your server's IP address at the TCP level. If this happens:
   1. Obtain a custom HTTP, HTTPS, or SOCKS5 proxy (e.g. from a residential proxy provider).
   2. Set the `YOUTUBE_PROXY` environment variable to your proxy URL (e.g., `socks5://username:password@ip:port`). All yt-dlp requests will automatically route through it.
+  3. **Note on SOCKS5 proxies:** FFmpeg cannot natively route traffic through SOCKS proxies. When a SOCKS5 proxy is detected, the bot automatically switches to download-to-file mode (yt-dlp downloads through the proxy, then FFmpeg reads the local file). HTTP/HTTPS proxies support both direct streaming and download modes.
 - Ensure yt-dlp is installed and up-to-date: `pip install -U yt-dlp`
 - If region-restricted: yt-dlp's `--geo-bypass` is enabled by default
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
