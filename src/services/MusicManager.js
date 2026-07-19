@@ -168,56 +168,61 @@ function isPlaylist(query) {
 }
 
 async function fetchSpotifyTracks(url) {
-    let match = url.match(/spotify\.com\/(playlist|album)\/([a-zA-Z0-9]+)/);
-    if (!match) {
-        throw new Error('Invalid Spotify URL. Only playlists and albums are supported.');
-    }
-    const type = match[1];
-    const id = match[2];
-    const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
-    
-    const response = await fetch(embedUrl, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    try {
+        let match = url.match(/spotify\.com\/(playlist|album)\/([a-zA-Z0-9]+)/);
+        if (!match) {
+            throw new Error('Invalid Spotify URL. Only playlists and albums are supported.');
         }
-    });
-    
-    if (!response.ok) {
-        throw new Error(`Failed to fetch Spotify embed: ${response.statusText}`);
-    }
-    
-    const text = await response.text();
-    const nextDataMatch = text.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-    if (!nextDataMatch) {
-        throw new Error('Could not parse Spotify metadata');
-    }
-    
-    const json = JSON.parse(nextDataMatch[1]);
-    const entity = json.props?.pageProps?.state?.data?.entity;
-    if (!entity) {
-        throw new Error('No playlist/album tracks found on this page');
-    }
-    
-    const name = entity.name || entity.title || 'Spotify Content';
-    const rawTracks = entity.trackList || [];
-    
-    const tracks = rawTracks.map(track => {
-        const title = track.title;
-        const artist = track.subtitle || 'Unknown Artist';
-        const durationMs = track.duration || 0;
-        const durationMin = Math.floor(durationMs / 60000);
-        const durationSec = String(Math.floor((durationMs % 60000) / 1000)).padStart(2, '0');
-        const duration = durationMs ? `${durationMin}:${durationSec}` : 'Live/Unknown';
+        const type = match[1];
+        const id = match[2];
+        const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
         
-        return {
-            title: `${title} - ${artist}`,
-            originalUrl: `ytsearch1:${title} ${artist}`,
-            duration,
-            sourceType: 'youtube'
-        };
-    });
-    
-    return { name, tracks };
+        const response = await fetch(embedUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch Spotify embed: ${response.statusText}`);
+        }
+        
+        const text = await response.text();
+        const nextDataMatch = text.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+        if (!nextDataMatch) {
+            throw new Error('Could not parse Spotify metadata');
+        }
+        
+        const json = JSON.parse(nextDataMatch[1]);
+        const entity = json.props?.pageProps?.state?.data?.entity;
+        if (!entity) {
+            throw new Error('No playlist/album tracks found on this page');
+        }
+        
+        const name = entity.name || entity.title || 'Spotify Content';
+        const rawTracks = entity.trackList || [];
+        
+        const tracks = rawTracks.map(track => {
+            const title = track.title;
+            const artist = track.subtitle || 'Unknown Artist';
+            const durationMs = track.duration || 0;
+            const durationMin = Math.floor(durationMs / 60000);
+            const durationSec = String(Math.floor((durationMs % 60000) / 1000)).padStart(2, '0');
+            const duration = durationMs ? `${durationMin}:${durationSec}` : 'Live/Unknown';
+            
+            return {
+                title: `${title} - ${artist}`,
+                originalUrl: `ytsearch1:${title} ${artist}`,
+                duration,
+                sourceType: 'youtube'
+            };
+        });
+        
+        return { name, tracks };
+    } catch (e) {
+        logger.warn('Spotify', `Scraping failed (${e.message}), falling back to yt-dlp native extraction.`);
+        return await fetchYtDlpPlaylistTracks(url);
+    }
 }
 
 let cachedAppleToken = null;
@@ -1562,3 +1567,32 @@ const cleanup = () => {
 
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
+
+// Startup Garbage Collection for orphaned temp files (handles SIGKILL or unexpected crashes)
+setTimeout(async () => {
+    try {
+        const tmpdir = os.tmpdir();
+        const files = await fsPromises.readdir(tmpdir);
+        const now = Date.now();
+        let deleted = 0;
+        
+        for (const file of files) {
+            if (file.startsWith('discord_music_') && file.endsWith('.audio')) {
+                const filePath = path.join(tmpdir, file);
+                try {
+                    const stats = await fsPromises.stat(filePath);
+                    if (now - stats.mtimeMs > 3600000) { // Older than 1 hour
+                        await fsPromises.unlink(filePath);
+                        deleted++;
+                    }
+                } catch (e) {}
+            }
+        }
+        if (deleted > 0) {
+            logger.info('System', `Cleaned up ${deleted} orphaned audio temp files from previous sessions.`);
+        }
+    } catch (e) {
+        logger.error('System', 'Failed to run temp file garbage collection', e);
+    }
+}, 5000);
+

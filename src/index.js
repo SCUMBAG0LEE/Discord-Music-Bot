@@ -19,7 +19,9 @@ const warmDns = () => {
 warmDns();
 setInterval(warmDns, 20000);
 
-const client = new Client();
+const client = new Client({
+    allowedMentions: { parse: ['users'] }
+});
 
 // Give MusicManager access to the client to update presence
 musicManager.client = client;
