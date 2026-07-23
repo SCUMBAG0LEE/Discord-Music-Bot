@@ -5,6 +5,7 @@ export const PermissionFlagsBits = {
 };
 
 import { getEffectiveDJRole } from '../services/serverSettings.js';
+import { logger } from './logger.js';
 
 /**
  * Check if user is the bot owner
@@ -79,7 +80,7 @@ export async function canUseDJCommands(ctx, queue) {
       }
     }
   } catch (e) {
-    console.error("Error checking voice state in canUseDJCommands:", e);
+    logger.error('Permissions', 'Error checking voice state in canUseDJCommands', e);
   }
   
   return false;

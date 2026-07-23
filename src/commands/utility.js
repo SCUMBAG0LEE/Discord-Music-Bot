@@ -2,12 +2,9 @@ import { Command, Declare, Embed, Options, createStringOption } from 'seyfert';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { musicManager, ffmpegInfo, hardwareOptimization } from '../services/MusicManager.js';
+import { musicManager, ffmpegInfo, hardwareOptimization, execFileAsync } from '../services/MusicManager.js';
 import { getVoiceConnection } from '@discordjs/voice';
 import { isOwner } from '../utils/permissions.js';
-const execFileAsync = promisify(execFile);
 
 function formatDuration(seconds) {
     if (!seconds || isNaN(seconds)) return '0:00';

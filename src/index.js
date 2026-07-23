@@ -17,7 +17,7 @@ const warmDns = () => {
     });
 };
 warmDns();
-setInterval(warmDns, 20000);
+const dnsWarmInterval = setInterval(warmDns, 20000);
 
 const client = new Client({
     allowedMentions: { parse: ['users'] }
@@ -36,13 +36,17 @@ client.commands.onFile = (file) => {
 client.start().then(async () => {
     logger.info('Bot', 'Seyfert Music Bot Started successfully!');
     
-    try {
-        await client.uploadCommands();
-        logger.info('Bot', 'Commands synced with Discord!');
-    } catch (err) {
-        logger.error('Bot', 'Upload Commands Failed');
-        console.error(JSON.stringify(err, null, 2));
-        throw err;
+    // Skip command upload if SKIP_COMMAND_UPLOAD is set (avoids Discord rate limits on frequent restarts)
+    if (process.env.SKIP_COMMAND_UPLOAD !== 'true') {
+        try {
+            await client.uploadCommands();
+            logger.info('Bot', 'Commands synced with Discord!');
+        } catch (err) {
+            logger.error('Bot', 'Upload Commands Failed', err);
+            throw err;
+        }
+    } else {
+        logger.info('Bot', 'Skipping command upload (SKIP_COMMAND_UPLOAD=true)');
     }
 
     // Inject Raw Payload Interceptor for @discordjs/voice
@@ -77,7 +81,7 @@ client.start().then(async () => {
                                 }
                             }
                         } catch (e) {
-                            console.error("Alone Check Error:", e);
+                            logger.error('VoiceCheck', 'Alone Check Error', e);
                         }
                     }, 3000); // 3-second buffer to allow cache updates and quick reconnects
                 }
@@ -121,3 +125,7 @@ client.start().then(async () => {
 }).catch((err) => {
     logger.error('Bot', 'Failed to start Seyfert', err);
 });
+
+// Clean up DNS warming interval on shutdown to prevent leaking timers
+process.on('SIGINT', () => clearInterval(dnsWarmInterval));
+process.on('SIGTERM', () => clearInterval(dnsWarmInterval));

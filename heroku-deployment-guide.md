@@ -82,6 +82,9 @@ heroku config:set ACTIVITY_TYPE="LISTENING" -a your-bot-app-name
 heroku config:set ACTIVITY_NAME="music | /help" -a your-bot-app-name
 heroku config:set YOUTUBE_PROXY="socks5://username:password@ip:port" -a your-bot-app-name
 heroku config:set YOUTUBE_COOKIES="" -a your-bot-app-name
+
+# Performance / Startup
+heroku config:set SKIP_COMMAND_UPLOAD="false" -a your-bot-app-name
 ```
 
 ---

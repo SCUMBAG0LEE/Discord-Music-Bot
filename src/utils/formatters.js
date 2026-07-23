@@ -54,7 +54,7 @@ function parseTimestamp(str) {
   return null;
 }
 
-module.exports = {
+export {
   formatDuration,
   formatDurationMs,
   truncate,

@@ -121,6 +121,15 @@
     "YOUTUBE_USER_AGENT": {
       "description": "The exact User-Agent string of the browser used to export your cookies, used to bypass Cloudflare/YouTube bot checks (Optional)",
       "required": false
+    },
+    "DJ_ROLE_ID": {
+      "description": "Discord Role ID allowed to use DJ-only commands like skip, stop, clear (Optional, everyone can use if not set)",
+      "required": false
+    },
+    "SKIP_COMMAND_UPLOAD": {
+      "description": "Set to 'true' to skip uploading slash commands on startup, useful for faster restarts (Optional)",
+      "value": "false",
+      "required": false
     }
   },
   "formation": {

@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 import path from 'path';
 import fs from 'fs';
+import { logger } from '../utils/logger.js';
 
 class DatabaseManager {
     constructor() {
@@ -13,14 +14,15 @@ class DatabaseManager {
 
         if (this.accountId && this.databaseId && this.apiToken) {
             this.isCloud = true;
-            console.log('[DatabaseManager] Cloudflare D1 detected. Running in Cloud Mode.');
+            logger.info('Database', 'Cloudflare D1 detected. Running in Cloud Mode.');
         } else {
-            console.log('[DatabaseManager] Cloudflare D1 credentials missing. Running in Local SQLite Mode.');
+            logger.info('Database', 'Cloudflare D1 credentials missing. Running in Local SQLite Mode.');
             try {
                 this.db = new Database(path.join(process.cwd(), 'music_bot.sqlite'), { create: true });
+                this.db.exec('PRAGMA journal_mode = WAL;');
                 this.db.exec('PRAGMA foreign_keys = ON;');
             } catch (err) {
-                console.error('[DatabaseManager] Failed to initialize local SQLite database:', err);
+                logger.error('Database', 'Failed to initialize local SQLite database', err);
             }
         }
         
@@ -76,14 +78,14 @@ class DatabaseManager {
                 )
             `);
 
-            console.log('[DatabaseManager] Database tables initialized successfully.');
+            logger.info('Database', 'Database tables initialized successfully.');
             
             // Run legacy migration if running locally
             if (!this.isCloud) {
                 this.migrateLegacyPlaylists();
             }
         } catch (err) {
-            console.error('[DatabaseManager] Database initialization failed:', err);
+            logger.error('Database', 'Database initialization failed', err);
         }
     }
 
@@ -151,7 +153,7 @@ class DatabaseManager {
                 lastInsertRowid: resultObj.meta?.last_row_id || 0
             };
         } catch (err) {
-            console.error('[DatabaseManager] Cloudflare D1 query error:', err.message);
+            logger.error('Database', `Cloudflare D1 query error: ${err.message}`);
             throw err;
         }
     }
@@ -235,7 +237,7 @@ class DatabaseManager {
             await this.query(sql, params);
             return { success: true, error: null };
         } catch (err) {
-            console.error('[DatabaseManager] Failed to save playlist:', err);
+            logger.error('Database', 'Failed to save playlist', err);
             return { success: false, error: err.message };
         }
     }
@@ -272,7 +274,7 @@ class DatabaseManager {
                 error: null
             };
         } catch (err) {
-            console.error('[DatabaseManager] Failed to load playlist:', err);
+            logger.error('Database', 'Failed to load playlist', err);
             return { playlist: null, error: err.message };
         }
     }
@@ -289,7 +291,7 @@ class DatabaseManager {
             }
             return { success: true, error: null };
         } catch (err) {
-            console.error('[DatabaseManager] Failed to delete playlist:', err);
+            logger.error('Database', 'Failed to delete playlist', err);
             return { success: false, error: err.message };
         }
     }
@@ -307,7 +309,7 @@ class DatabaseManager {
             `, [userId]);
             return { playlists: res.results, error: null };
         } catch (err) {
-            console.error('[DatabaseManager] Failed to list playlists:', err);
+            logger.error('Database', 'Failed to list playlists', err);
             return { playlists: [], error: err.message };
         }
     }
@@ -347,7 +349,7 @@ class DatabaseManager {
             await this.query(sql, params);
             return { success: true, error: null };
         } catch (err) {
-            console.error('[DatabaseManager] Failed to append to playlist:', err);
+            logger.error('Database', 'Failed to append to playlist', err);
             return { success: false, error: err.message };
         }
     }
@@ -391,7 +393,7 @@ class DatabaseManager {
             const userFiles = files.filter(f => f.endsWith('.json'));
             if (userFiles.length === 0) return;
 
-            console.log(`[DatabaseManager/Migration] Found ${userFiles.length} legacy playlist JSON files. Migrating...`);
+            logger.info('Database', `Found ${userFiles.length} legacy playlist JSON files. Migrating...`);
             const backupDir = path.join(legacyDir, 'backup_migrated');
             if (!fs.existsSync(backupDir)) {
                 fs.mkdirSync(backupDir, { recursive: true });
@@ -406,17 +408,17 @@ class DatabaseManager {
 
                         if (playlist && playlist.userId && playlist.name && Array.isArray(playlist.songs)) {
                             await this.savePlaylist(playlist.userId, playlist.name, playlist.songs);
-                            console.log(`[DatabaseManager/Migration] Migrated playlist "${playlist.name}" for user ${playlist.userId}`);
+                            logger.info('Database', `Migrated playlist "${playlist.name}" for user ${playlist.userId}`);
                         }
                         
                         fs.renameSync(filePath, path.join(backupDir, file));
                     } catch (fileErr) {
-                        console.error(`[DatabaseManager/Migration] Error migrating file ${file}:`, fileErr);
+                        logger.error('Database', `Error migrating file ${file}`, fileErr);
                     }
                 })();
             }
         } catch (err) {
-            console.error('[DatabaseManager/Migration] Failed to run legacy playlist migration:', err);
+            logger.error('Database', 'Failed to run legacy playlist migration', err);
         }
     }
 }

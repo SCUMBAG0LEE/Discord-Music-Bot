@@ -1,11 +1,7 @@
 import { Command, Declare, Options, createStringOption, Embed, ActionRow, StringSelectMenu, StringSelectOption } from 'seyfert';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { getYtDlpArgs } from '../utils/cookies.js';
 import { verifyVoiceConnection } from '../utils/permissions.js';
-import { musicManager } from '../services/MusicManager.js';
-
-const execFileAsync = promisify(execFile);
+import { musicManager, execFileAsync } from '../services/MusicManager.js';
 
 const searchOptions = {
     query: createStringOption({

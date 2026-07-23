@@ -2,6 +2,7 @@ import { Command, Declare, Options, createStringOption, Embed } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
 import https from 'https';
 import dns from 'dns';
+import { logger } from '../utils/logger.js';
 
 // Setup DNS-over-HTTPS (DoH) with direct DNS fallbacks
 async function resolveDoH(hostname) {
@@ -23,40 +24,40 @@ async function resolveDoH(hostname) {
 
     try {
         // Primary: Cloudflare DoH
-        console.log(`[DNS] Resolving ${hostname} via Cloudflare DoH`);
+        logger.debug('DNS', `Resolving ${hostname} via Cloudflare DoH`);
         const ip = await tryDoH(`https://cloudflare-dns.com/dns-query?name=${hostname}&type=A`);
-        console.log(`[DNS] Resolved ${hostname} to ${ip} via Cloudflare DoH`);
+        logger.debug('DNS', `Resolved ${hostname} to ${ip} via Cloudflare DoH`);
         return ip;
     } catch (err) {
-        console.warn(`[DNS] Cloudflare DoH failed for ${hostname}:`, err.message || err);
+        logger.debug('DNS', `Cloudflare DoH failed for ${hostname}: ${err.message || err}`);
         try {
             // Fallback 1: Google DoH
-            console.log(`[DNS] Resolving ${hostname} via Google DoH`);
+            logger.debug('DNS', `Resolving ${hostname} via Google DoH`);
             const ip = await tryDoH(`https://dns.google/resolve?name=${hostname}&type=A`);
-            console.log(`[DNS] Resolved ${hostname} to ${ip} via Google DoH`);
+            logger.debug('DNS', `Resolved ${hostname} to ${ip} via Google DoH`);
             return ip;
         } catch (err2) {
-            console.warn(`[DNS] Google DoH failed for ${hostname}:`, err2.message || err2);
+            logger.debug('DNS', `Google DoH failed for ${hostname}: ${err2.message || err2}`);
             try {
                 // Fallback 2: Direct custom DNS (1.1.1.1 & 8.8.8.8)
-                console.log(`[DNS] Resolving ${hostname} via direct DNS resolver (1.1.1.1 / 8.8.8.8)`);
+                logger.debug('DNS', `Resolving ${hostname} via direct DNS resolver (1.1.1.1 / 8.8.8.8)`);
                 const resolver = new dns.promises.Resolver();
                 resolver.setServers(['1.1.1.1', '8.8.8.8', '1.0.0.1', '8.8.4.4']);
                 const addresses = await resolver.resolve4(hostname);
                 if (addresses && addresses.length > 0) {
                     const ip = addresses[0];
-                    console.log(`[DNS] Resolved ${hostname} to ${ip} via direct DNS resolver`);
+                    logger.debug('DNS', `Resolved ${hostname} to ${ip} via direct DNS resolver`);
                     return ip;
                 }
                 throw new Error('No addresses found');
             } catch (err3) {
-                console.warn(`[DNS] Direct DNS resolver failed for ${hostname}:`, err3.message || err3);
+                logger.debug('DNS', `Direct DNS resolver failed for ${hostname}: ${err3.message || err3}`);
                 // Fallback 3: System default DNS resolution as final fallback
-                console.log(`[DNS] Resolving ${hostname} via system default resolver`);
+                logger.debug('DNS', `Resolving ${hostname} via system default resolver`);
                 const addresses = await dns.promises.resolve4(hostname);
                 if (addresses && addresses.length > 0) {
                     const ip = addresses[0];
-                    console.log(`[DNS] Resolved ${hostname} to ${ip} via system default resolver`);
+                    logger.debug('DNS', `Resolved ${hostname} to ${ip} via system default resolver`);
                     return ip;
                 }
                 throw new Error(`Failed to resolve ${hostname} via all methods`);
@@ -122,19 +123,19 @@ async function fetchJson(urlString) {
     try {
         const ip = await resolveDoH(parsedUrl.hostname);
         if (ip) {
-            console.log(`[HTTP] Attempting native fetch to resolved IP: ${ip} for ${parsedUrl.hostname}`);
+            logger.debug('HTTP', `Attempting native fetch to resolved IP: ${ip} for ${parsedUrl.hostname}`);
             return await makeRequest(urlString, ip);
         }
     } catch (err) {
-        console.warn(`[HTTP] Native fetch to IP-resolved host failed for ${parsedUrl.hostname}:`, err.message || err);
+        logger.debug('HTTP', `Native fetch to IP-resolved host failed for ${parsedUrl.hostname}: ${err.message || err}`);
     }
 
     // Try Option B: Direct hostname connection
     try {
-        console.log(`[HTTP] Falling back to direct native fetch for ${parsedUrl.hostname}`);
+        logger.debug('HTTP', `Falling back to direct native fetch for ${parsedUrl.hostname}`);
         return await makeRequest(urlString);
     } catch (err) {
-        console.error(`[HTTP] Direct native fetch failed for ${parsedUrl.hostname}:`, err.message || err);
+        logger.error('HTTP', `Direct native fetch failed for ${parsedUrl.hostname}: ${err.message || err}`);
         throw err;
     }
 }
@@ -156,7 +157,7 @@ export default class LyricsCommand extends Command {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[LyricsCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            logger.warn('Lyrics', `Failed to defer interaction: ${e.message || e}`);
             return;
         }
         
@@ -195,7 +196,7 @@ export default class LyricsCommand extends Command {
             // Primary: LRCLIB (massive open source lyrics database)
             if (!lyrics) {
                 try {
-                    console.log(`[LRCLIB] Searching q=${searchTerm}`);
+                    logger.debug('LRCLIB', `Searching q=${searchTerm}`);
                     const response = await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchTerm)}`);
                     if (response.ok) {
                         const data = response.data;
@@ -209,23 +210,23 @@ export default class LyricsCommand extends Command {
                                 trackInfo.artist = validMatch.artistName;
                                 trackInfo.album = validMatch.albumName;
                             } else {
-                                console.log(`[LRCLIB] q search returned tracks but no plainLyrics`);
+                                logger.debug('LRCLIB', `q search returned tracks but no plainLyrics`);
                             }
                         } else {
-                            console.log(`[LRCLIB] q search returned empty array`);
+                            logger.debug('LRCLIB', `q search returned empty array`);
                         }
                     } else {
-                        console.log(`[LRCLIB] q search failed with status ${response.status}`);
+                        logger.debug('LRCLIB', `q search failed with status ${response.status}`);
                     }
                 } catch (e) {
-                    console.error(`[LRCLIB] q search error:`, e.message || e);
+                    logger.error('LRCLIB', `q search error: ${e.message || e}`);
                 }
             }
             
             // Fallback 1: LRCLIB with split artist/title (only if we have an artist)
             if (!lyrics && artist && songName) {
                 try {
-                    console.log(`[LRCLIB] Searching track=${songName} artist=${artist}`);
+                    logger.debug('LRCLIB', `Searching track=${songName} artist=${artist}`);
                     const response = await fetchJson(`https://lrclib.net/api/search?track_name=${encodeURIComponent(songName)}&artist_name=${encodeURIComponent(artist)}`);
                     if (response.ok) {
                         const data = response.data;
@@ -241,14 +242,14 @@ export default class LyricsCommand extends Command {
                         }
                     }
                 } catch (e) {
-                    console.error(`[LRCLIB] track/artist search error:`, e.message || e);
+                    logger.error('LRCLIB', `track/artist search error: ${e.message || e}`);
                 }
             }
             
             // Fallback 2: some-random-api.com (works on global query search)
             if (!lyrics) {
                 try {
-                    console.log(`[some-random-api] Searching title=${searchTerm}`);
+                    logger.debug('Lyrics', `Searching some-random-api title=${searchTerm}`);
                     const response = await fetchJson(`https://some-random-api.com/lyrics?title=${encodeURIComponent(searchTerm)}`);
                     if (response.ok) {
                         const data = response.data;
@@ -261,14 +262,14 @@ export default class LyricsCommand extends Command {
                         }
                     }
                 } catch (e) {
-                    console.error(`[some-random-api] search error:`, e.message || e);
+                    logger.error('Lyrics', `some-random-api search error: ${e.message || e}`);
                 }
             }
 
             // Fallback 3: lyrics.ovh
             if (!lyrics && artist && songName) {
                 try {
-                    console.log(`[lyrics.ovh] Searching artist=${artist} song=${songName}`);
+                    logger.debug('Lyrics', `Searching lyrics.ovh artist=${artist} song=${songName}`);
                     const response = await fetchJson(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(songName)}`);
                     if (response.ok) {
                         const data = response.data;
@@ -280,7 +281,7 @@ export default class LyricsCommand extends Command {
                         }
                     }
                 } catch (e) {
-                    console.error(`[lyrics.ovh] search error:`, e.message || e);
+                    logger.error('Lyrics', `lyrics.ovh search error: ${e.message || e}`);
                 }
             }
             

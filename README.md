@@ -69,17 +69,17 @@ src/
 │   ├── utility.js           # /help, /ping, /stats
 │   └── voteskip.js          # /voteskip
 ├── services/
-│   ├── DatabaseManager.js   # bun:sqlite playlist and likes database controller
+│   ├── DatabaseManager.js   # bun:sqlite (WAL mode) and Cloudflare D1 database controller
 │   ├── MusicManager.js      # Seyfert-compatible native yt-dlp extractor & stream logic
-│   └── serverSettings.js    # Per-server settings JSON storage controller
+│   └── serverSettings.js    # Per-server settings with in-memory cache & DB persistence
 └── utils/
     ├── cookies.js           # Netscape / JSON cookie file parser
     ├── formatters.js        # Duration formatters
     ├── logger.js            # Console logging module
     └── permissions.js       # DJ/Owner permission check helpers
 data/
-├── database.sqlite          # Local SQLite database for likes/playlists
-└── servers/                 # Per-server JSON configuration files
+└── playlists/               # Legacy JSON playlists (auto-migrated to DB on startup)
+music_bot.sqlite             # Local SQLite database (favorites, playlists, server settings)
 ```
 
 ## 🚀 Quick Start
@@ -156,6 +156,8 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `YOUTUBE_PROXY` | ❌ | Optional HTTP/SOCKS5 proxy URL to route yt-dlp traffic through to bypass hard IP blocks |
 | `YOUTUBE_COOKIES` | ❌ | Accepts a file path or a Base64 encoded string of your cookies file (Crucial for Docker/Heroku) |
 | `YOUTUBE_USER_AGENT` | ❌ | The exact User-Agent string from the browser used to export your cookies |
+| `DJ_ROLE_ID` | ❌ | Role ID that can use DJ-only commands (skip, stop, clear) |
+| `SKIP_COMMAND_UPLOAD` | ❌ | Set `true` to skip uploading commands on startup (faster restarts) |
 
 > **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
 > | Scenario | Activity |

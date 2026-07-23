@@ -44,11 +44,17 @@ COPY . .
 # Ensure orchestration script is executable
 RUN chmod +x entrypoint.sh
 
+# Create a non-root user for security best practice
+RUN groupadd -r botuser && useradd -r -g botuser -d /app botuser \
+    && chown -R botuser:botuser /app
+USER botuser
+
 # Set environment variables
 ENV NODE_ENV=production
 
-# Expose SOCKS5 port just for explicit documentation
-EXPOSE 8010
+# Healthcheck: verify the bun process is alive (useful for Docker orchestrators like Compose/Swarm)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -x bun > /dev/null || exit 1
 
 # Start the bot via orchestration script
 ENTRYPOINT ["./entrypoint.sh"]

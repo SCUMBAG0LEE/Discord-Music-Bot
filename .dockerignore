@@ -31,3 +31,14 @@ heroku.yml
 heroku-deployment-guide.md
 README.md
 LICENSE
+app.json
+.env.example
+
+# Ignore agent/IDE config and scratch files
+.agents/
+scratch/
+.antigravityignore
+
+# Ignore SQLite WAL/SHM journal files
+*.sqlite-wal
+*.sqlite-shm

@@ -11,6 +11,9 @@ import {
 import { execFile, spawn, spawnSync } from 'child_process';
 import prism from 'prism-media';
 import { promisify } from 'util';
+
+// Shared async exec helper — also used by commands via import
+export const execFileAsync = promisify(execFile);
 import { getYtDlpArgs } from '../utils/cookies.js';
 import { loadSettings } from './serverSettings.js';
 import { logger } from '../utils/logger.js';
@@ -109,7 +112,7 @@ try {
     ffmpegInfo.path = ffmpegInfo.path !== 'unknown' ? ffmpegInfo.path : 'ffmpeg';
 }
 
-const execFileAsync = promisify(execFile);
+// execFileAsync is now exported above alongside imports for reuse by commands
 
 export const voiceAdapters = new Map();
 
@@ -227,27 +230,19 @@ async function fetchSpotifyTracks(url) {
 
 let cachedAppleToken = null;
 let appleTokenExpiry = 0;
-let isFetchingAppleToken = false;
+let appleTokenPromise = null;
 
 async function getAppleMusicToken() {
     if (cachedAppleToken && Date.now() < appleTokenExpiry) {
         return cachedAppleToken;
     }
 
-    // Simple lock to prevent a race condition where multiple requests fetch the token simultaneously.
-    if (isFetchingAppleToken) {
-        await new Promise(resolve => {
-            const interval = setInterval(() => {
-                if (!isFetchingAppleToken) {
-                    clearInterval(interval);
-                    resolve();
-                }
-            }, 100);
-        });
-        return getAppleMusicToken(); // Re-check after waiting
+    // Promise-based lock: all concurrent callers share the same in-flight request
+    if (appleTokenPromise) {
+        return appleTokenPromise;
     }
 
-    isFetchingAppleToken = true;
+    appleTokenPromise = (async () => {
     try {
     const mainPageRes = await fetch('https://music.apple.com/us/browse', {
         headers: {
@@ -294,8 +289,12 @@ async function getAppleMusicToken() {
     }
     cachedAppleToken = token;
     return cachedAppleToken;
+    })();
+
+    try {
+        return await appleTokenPromise;
     } finally {
-        isFetchingAppleToken = false;
+        appleTokenPromise = null;
     }
 }
 
@@ -315,7 +314,7 @@ async function resolveUrlRedirects(url) {
             return response.url;
         }
     } catch (e) {
-        console.error('[Redirect Resolver Error]', e);
+        logger.error('Redirect', 'Failed to resolve URL redirects', e);
     }
     return url;
 }
@@ -396,7 +395,7 @@ async function fetchAppleMusicTracks(url) {
     let rawTracks = [];
     const tracksRelationship = playlist.relationships?.tracks;
     if (tracksRelationship && tracksRelationship.data) {
-        rawTracks = [...tracksRelationship.data];
+        rawTracks = tracksRelationship.data.slice();
         let nextUrl = tracksRelationship.next;
         // Limit to 500 tracks to avoid extreme queues
         while (nextUrl && rawTracks.length < 500) {
@@ -412,7 +411,7 @@ async function fetchAppleMusicTracks(url) {
             if (nextRes.ok) {
                 const nextData = await nextRes.json();
                 if (nextData.data && nextData.data.length > 0) {
-                    rawTracks = [...rawTracks, ...nextData.data];
+                    rawTracks.push(...nextData.data);
                     nextUrl = nextData.next;
                 } else {
                     nextUrl = null;
@@ -462,7 +461,8 @@ async function fetchYtDlpPlaylistTracks(url) {
             originalUrl: data.url || `https://www.youtube.com/watch?v=${data.id}`,
             duration,
             sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : 'youtube',
-            _ytDlpData: data
+            // Only keep the fields needed for streaming — discard the rest to save memory
+            _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url }
         };
     });
 
@@ -477,7 +477,7 @@ async function getSpotifyQuery(url) {
         if (titleMatch && titleMatch[1]) {
             return titleMatch[1].replace(' - song by ', ' ');
         }
-    } catch(e) {}
+    } catch(e) { logger.debug('Spotify', 'Failed to scrape Spotify title', e); }
     throw new Error("Could not parse Spotify URL");
 }
 
@@ -525,7 +525,7 @@ async function getTrackInfo(query, searchPrefix = '') {
                     }
                 }
             } catch (e) {
-                console.error("Failed to parse Deezer track:", e.message);
+                logger.error('Deezer', 'Failed to parse Deezer track', e);
             }
         }
     }
@@ -561,7 +561,7 @@ async function getTrackInfo(query, searchPrefix = '') {
                 }
             }
         } catch (e) {
-            console.error("Failed to parse Apple Music track:", e.message);
+            logger.error('AppleMusic', 'Failed to parse Apple Music track', e);
         }
     }
     
@@ -592,12 +592,13 @@ async function getTrackInfo(query, searchPrefix = '') {
                 durationInSec: data.duration,
                 durationRaw: data.duration ? `${Math.floor(data.duration / 60)}:${(data.duration % 60).toString().padStart(2, '0')}` : 'Live/Unknown',
                 sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other'),
-                _ytDlpData: data
+                // Only keep the fields needed for streaming — discard the rest to save memory
+                _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url }
             };
         } catch (e) {
             lastError = e;
             if (attempt < maxRetries) {
-                console.warn(`[getTrackInfo] Attempt ${attempt} failed for ${target}, retrying... (${e.message})`);
+                logger.warn('TrackInfo', `Attempt ${attempt} failed for ${target}, retrying... (${e.message})`);
                 await new Promise(res => setTimeout(res, 2000 * attempt)); // Backoff: 2s, 4s
             }
         }
@@ -655,7 +656,7 @@ export class MusicManager {
                 await queue.client.messages.write(queue.textChannelId, options);
             }
         } catch (e) {
-            console.error("Failed to send message:", e.message);
+            logger.error('MusicManager', 'Failed to send message', e);
         }
     }
 
@@ -837,14 +838,31 @@ export class MusicManager {
         this.queues.set(guildId, queue);
 
         connection.on('stateChange', (oldState, newState) => {
-            console.log(`[VoiceConnection] ${oldState.status} -> ${newState.status}`);
+            logger.debug('VoiceConnection', `${oldState.status} -> ${newState.status}`);
         });
-        connection.on('error', err => console.error('[VoiceConnection Error]', err));
+        connection.on('error', err => logger.error('VoiceConnection', 'Connection error', err));
+
+        // Reconnection strategy: attempt to recover from network disconnects
+        connection.on(VoiceConnectionStatus.Disconnected, async () => {
+            try {
+                // Wait for the connection to re-enter Signalling or Connecting state
+                await Promise.race([
+                    entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+                    entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+                ]);
+                logger.info('VoiceConnection', `Reconnecting voice for guild ${guildId}...`);
+            } catch {
+                // Could not reconnect within 5 seconds — destroy and clean up
+                logger.warn('VoiceConnection', `Failed to reconnect voice for guild ${guildId}, destroying connection.`);
+                connection.destroy();
+                this.queues.delete(guildId);
+            }
+        });
 
         player.on('stateChange', (oldState, newState) => {
-            console.log(`[AudioPlayer] ${oldState.status} -> ${newState.status}`);
+            logger.debug('AudioPlayer', `${oldState.status} -> ${newState.status}`);
         });
-        player.on('error', err => console.error('[AudioPlayer Error]', err));
+        player.on('error', err => logger.error('AudioPlayer', 'Player error', err));
 
         connection.subscribe(player);
 
@@ -894,7 +912,7 @@ export class MusicManager {
         });
 
         player.on('error', error => {
-            console.error(`Audio error: ${error.message}`);
+            logger.error('AudioPlayer', `Audio error: ${error.message}`);
             queue.songs.shift();
             this.playNext(guildId);
         });
@@ -978,7 +996,7 @@ export class MusicManager {
                 
                 await this.playSongs(channel, playlistResult.tracks, textChannel);
             } catch (e) {
-                console.error("Error loading playlist:", e);
+                logger.error('MusicManager', 'Error loading playlist', e);
                 return textChannel?.editOrReply({ content: `❌ Error loading playlist: ${e.message}` });
             }
             return;
@@ -995,7 +1013,7 @@ export class MusicManager {
                 return textChannel?.editOrReply({ content: `❌ Song is too long! Maximum allowed duration is \`${maxDuration}s\`.`, flags: 64 });
             }
         } catch (error) {
-            console.error("Error fetching track:", error);
+            logger.error('MusicManager', 'Error fetching track', error);
             return textChannel?.editOrReply({ content: "❌ Could not find or validate that track.", flags: 64 });
         }
 
@@ -1058,7 +1076,6 @@ export class MusicManager {
             ]);
             const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
             
-            // Log any errors from the prefetch process to help debug failures
             ytdlpChildProcess.stderr.on('data', (data) => {
                 logger.error('Prefetch yt-dlp', `[${nextSong.title}] STDERR: ${data.toString().trim()}`);
             });
@@ -1177,22 +1194,59 @@ export class MusicManager {
                 }
                 
                 // Wait for yt-dlp to create the file and buffer enough data for FFmpeg to probe
-                let waitTime = 0;
-                while (waitTime < 15000) { // Max 15 seconds wait
-                    if (fs.existsSync(tempFilePath)) {
+                // Uses fs.watch for event-driven notification instead of sync polling
+                await new Promise((resolve) => {
+                    const timeout = setTimeout(() => {
+                        if (watcher) watcher.close();
+                        resolve();
+                    }, 15000);
+
+                    const checkReady = () => {
                         try {
-                            const stats = fs.statSync(tempFilePath);
-                            if (stats.size > 1024) { // Wait for at least 1KB
-                                break;
+                            if (fs.existsSync(tempFilePath)) {
+                                const stats = fs.statSync(tempFilePath);
+                                if (stats.size > 1024) {
+                                    clearTimeout(timeout);
+                                    if (watcher) watcher.close();
+                                    resolve();
+                                    return true;
+                                }
                             }
-                        } catch(e) {}
+                        } catch (e) { /* file may not exist yet */ }
+
+                        // Process exited (finished fast or failed)
+                        if (queue.ytdlpChildProcess && queue.ytdlpChildProcess.exitCode !== null) {
+                            clearTimeout(timeout);
+                            if (watcher) watcher.close();
+                            resolve();
+                            return true;
+                        }
+                        return false;
+                    };
+
+                    // Check immediately in case the prefetch already completed
+                    if (checkReady()) return;
+
+                    // Watch the directory for the file to appear/change
+                    let watcher;
+                    try {
+                        watcher = fs.watch(path.dirname(tempFilePath), (eventType, filename) => {
+                            if (filename === path.basename(tempFilePath)) {
+                                checkReady();
+                            }
+                        });
+                        watcher.on('error', () => { /* ignore watcher errors */ });
+                    } catch (e) {
+                        // fs.watch not supported or failed — fall back to a single delayed check
+                        logger.debug('MusicManager', 'fs.watch unavailable, using delayed check fallback');
+                        setTimeout(checkReady, 2000);
                     }
-                    if (queue.ytdlpChildProcess && queue.ytdlpChildProcess.exitCode !== null) {
-                        break; // Process exited (either finished fast or failed)
+
+                    // Also listen for the yt-dlp process exit as a signal
+                    if (queue.ytdlpChildProcess) {
+                        queue.ytdlpChildProcess.on('close', checkReady);
                     }
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    waitTime += 500;
-                }
+                });
 
                 // Optimized FFmpeg pipeline for native hardware-aligned instructions (Stereo, 48000Hz PCM/Opus)
                 ffmpegArgs = [
@@ -1277,7 +1331,7 @@ export class MusicManager {
                 this.prefetchNextTrack(guildId, queue.songs[1]);
             }
         } catch (error) {
-            console.error(`Failed to play ${song.title}:`, error);
+            logger.error('MusicManager', `Failed to play ${song.title}`, error);
             
             // Double-Layered Fallback Logic
             if (song.fallbackStage === 0) {
@@ -1290,7 +1344,7 @@ export class MusicManager {
                         song.originalUrl = fallbackInfo.originalUrl;
                         return this.playNext(guildId);
                     } catch (fallbackError) {
-                        console.error("YouTube fallback search failed:", fallbackError);
+                        logger.error('MusicManager', 'YouTube fallback search failed', fallbackError);
                     }
                 } else if (song.sourceType === 'youtube' || song.sourceType === 'other') {
                     await this.sendMessage(queue, { content: `⚠️ Stream failed, attempting SoundCloud fallback for **${song.title}**...` });
@@ -1300,7 +1354,7 @@ export class MusicManager {
                         song.originalUrl = fallbackInfo.originalUrl;
                         return this.playNext(guildId);
                     } catch (fallbackError) {
-                        console.error("SoundCloud fallback search failed:", fallbackError);
+                        logger.error('MusicManager', 'SoundCloud fallback search failed', fallbackError);
                     }
                 }
             }

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { logger } from './logger.js';
 
 // Helper to convert JSON cookies to Netscape format required by yt-dlp
 function convertJsonToNetscape(jsonPath, txtPath) {
@@ -25,7 +26,7 @@ function convertJsonToNetscape(jsonPath, txtPath) {
         fs.writeFileSync(txtPath, netscapeStr);
         return true;
     } catch (error) {
-        console.error(`[CookieParser] Failed to convert JSON cookies from ${jsonPath}:`, error.message);
+        logger.error('CookieParser', `Failed to convert JSON cookies from ${jsonPath}: ${error.message}`);
         return false;
     }
 }
@@ -58,7 +59,7 @@ export function getYtDlpArgs(baseArgs) {
                 if (cookieContent.length < 1000) {
                     const resolvedPath = path.resolve(process.cwd(), cookieContent);
                     if (fs.existsSync(resolvedPath)) {
-                        console.log(`[CookieParser] Using cookie path from environment: ${resolvedPath}`);
+                        logger.info('CookieParser', `Using cookie path from environment: ${resolvedPath}`);
                         args.push('--cookies', resolvedPath);
                         return args;
                     }
@@ -76,10 +77,10 @@ export function getYtDlpArgs(baseArgs) {
                     // Confirm it decoded into Netscape format or JSON format
                     if (decoded.includes('Netscape') || decoded.startsWith('[')) {
                         cookieContent = decoded;
-                        console.log('[CookieParser] Successfully decoded Base64 cookies from environment.');
+                        logger.info('CookieParser', 'Successfully decoded Base64 cookies from environment.');
                     }
                 } catch (b64Err) {
-                    console.warn('[CookieParser] Failed to decode cookies as Base64, processing raw:', b64Err.message);
+                    logger.warn('CookieParser', `Failed to decode cookies as Base64, processing raw: ${b64Err.message}`);
                 }
             }
             
@@ -98,7 +99,7 @@ export function getYtDlpArgs(baseArgs) {
                 return args;
             }
         } catch (err) {
-            console.error('[CookieParser] Failed to write cookies from environment variable:', err.message);
+            logger.error('CookieParser', `Failed to write cookies from environment variable: ${err.message}`);
         }
     }
     

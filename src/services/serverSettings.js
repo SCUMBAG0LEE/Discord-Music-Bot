@@ -6,6 +6,11 @@
 import fs from 'fs';
 import path from 'path';
 import { dbManager } from './DatabaseManager.js';
+import { logger } from '../utils/logger.js';
+
+// In-memory settings cache with TTL to avoid DB queries on every playback/permission check
+const settingsCache = new Map();
+const CACHE_TTL = 60_000; // 60 seconds
 
 // Default server settings
 export const defaultSettings = {
@@ -28,6 +33,12 @@ export const defaultSettings = {
  * @returns {Promise<object>}
  */
 export async function loadSettings(guildId) {
+  // Return cached settings if still fresh
+  const cached = settingsCache.get(guildId);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    return { ...cached.data };
+  }
+
   try {
     const res = await dbManager.query(
       'SELECT key, value FROM server_settings WHERE guild_id = ?',
@@ -44,9 +55,12 @@ export async function loadSettings(guildId) {
         }
       }
     }
+
+    // Cache the result
+    settingsCache.set(guildId, { data: settings, ts: Date.now() });
     return settings;
   } catch (err) {
-    console.error(`[serverSettings] Failed to load settings for guild ${guildId}:`, err);
+    logger.error('ServerSettings', `Failed to load settings for guild ${guildId}`, err);
     return { ...defaultSettings };
   }
 }
@@ -62,8 +76,10 @@ export async function saveSettings(guildId, settings) {
     for (const [key, value] of Object.entries(settings)) {
       await dbManager.setServerSetting(guildId, key, JSON.stringify(value));
     }
+    // Invalidate cache after saving
+    settingsCache.delete(guildId);
   } catch (err) {
-    console.error(`[serverSettings] Failed to save settings for guild ${guildId}:`, err);
+    logger.error('ServerSettings', `Failed to save settings for guild ${guildId}`, err);
   }
 }
 
@@ -83,7 +99,7 @@ export async function getSetting(guildId, key) {
       return val;
     }
   } catch (err) {
-    console.error(`[serverSettings] Failed to get setting ${key} for guild ${guildId}:`, err);
+    logger.error('ServerSettings', `Failed to get setting ${key} for guild ${guildId}`, err);
     return defaultSettings[key];
   }
 }
@@ -98,8 +114,10 @@ export async function getSetting(guildId, key) {
 export async function setSetting(guildId, key, value) {
   try {
     await dbManager.setServerSetting(guildId, key, JSON.stringify(value));
+    // Invalidate cache after changing a setting
+    settingsCache.delete(guildId);
   } catch (err) {
-    console.error(`[serverSettings] Failed to set setting ${key} for guild ${guildId}:`, err);
+    logger.error('ServerSettings', `Failed to set setting ${key} for guild ${guildId}`, err);
   }
   return await loadSettings(guildId);
 }
@@ -112,8 +130,10 @@ export async function setSetting(guildId, key, value) {
 export async function resetSettings(guildId) {
   try {
     await dbManager.clearServerSettings(guildId);
+    // Invalidate cache after reset
+    settingsCache.delete(guildId);
   } catch (err) {
-    console.error(`[serverSettings] Failed to reset settings for guild ${guildId}:`, err);
+    logger.error('ServerSettings', `Failed to reset settings for guild ${guildId}`, err);
   }
 }
 
@@ -177,7 +197,7 @@ export async function getEffectiveDJRole(guildId, globalDJRole) {
 // Run legacy migration asynchronously if running locally
 if (!dbManager.isCloud) {
   migrateLegacySettings().catch(err => {
-    console.error('[serverSettings] Error running legacy migration:', err);
+    logger.error('ServerSettings', 'Error running legacy migration', err);
   });
 }
 
@@ -192,7 +212,7 @@ async function migrateLegacySettings() {
     const jsonFiles = files.filter(f => f.endsWith('.json'));
     if (jsonFiles.length === 0) return;
     
-    console.log(`[serverSettings/Migration] Found ${jsonFiles.length} server settings files. Migrating to database...`);
+    logger.info('ServerSettings', `Found ${jsonFiles.length} server settings files. Migrating to database...`);
     const backupDir = path.join(settingsDir, 'backup_migrated');
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
@@ -208,13 +228,13 @@ async function migrateLegacySettings() {
         for (const [key, value] of Object.entries(settings)) {
           await dbManager.setServerSetting(guildId, key, JSON.stringify(value));
         }
-        console.log(`[serverSettings/Migration] Migrated settings for guild ${guildId}`);
+        logger.info('ServerSettings', `Migrated settings for guild ${guildId}`);
         fs.renameSync(filePath, path.join(backupDir, file));
       } catch (fileErr) {
-        console.error(`[serverSettings/Migration] Error migrating settings file ${file}:`, fileErr);
+        logger.error('ServerSettings', `Error migrating settings file ${file}`, fileErr);
       }
     }
   } catch (err) {
-    console.error('[serverSettings/Migration] Failed to run legacy settings migration:', err);
+    logger.error('ServerSettings', 'Failed to run legacy settings migration', err);
   }
 }
