@@ -18,6 +18,16 @@ const warmDns = () => {
 };
 warmDns();
 const dnsWarmInterval = setInterval(warmDns, 20000);
+if (dnsWarmInterval.unref) dnsWarmInterval.unref();
+
+// Global process error safety guards
+process.on('unhandledRejection', (reason) => {
+    logger.error('System', 'Unhandled Promise Rejection', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    logger.error('System', 'Uncaught Exception', error);
+});
 
 const client = new Client({
     allowedMentions: { parse: ['users'] }

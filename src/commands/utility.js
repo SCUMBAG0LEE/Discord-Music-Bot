@@ -102,14 +102,25 @@ export class DebugCommand extends Command {
         debugInfo += `> **Path:** \`${ytdlpPath}\`\n\n`;
 
         const hasCookies = fs.existsSync(path.join(process.cwd(), 'cookies.txt')) || fs.existsSync(path.join(process.cwd(), 'youtube-cookies.txt')) || !!process.env.YOUTUBE_COOKIES;
-        let pluginStatus = 'Unknown';
-        try {
-            const pipPath = process.env.YTDLP_PATH ? process.env.YTDLP_PATH.replace('yt-dlp', 'pip') : 'pip';
-            const { stdout } = await execFileAsync(pipPath, ['show', 'yt-dlp-getpot-wpc']);
-            pluginStatus = stdout.includes('Version:') ? 'Active' : 'Not Installed';
-        } catch (e) {
-            pluginStatus = 'Not Installed';
+        let pluginStatus = 'Not Installed';
+        const pipCommands = [
+            process.env.YTDLP_PATH ? [process.env.YTDLP_PATH.replace('yt-dlp', 'pip'), ['show', 'yt-dlp-getpot-wpc']] : null,
+            ['pip', ['show', 'yt-dlp-getpot-wpc']],
+            ['pip3', ['show', 'yt-dlp-getpot-wpc']],
+            ['python3', ['-m', 'pip', 'show', 'yt-dlp-getpot-wpc']],
+            ['python', ['-m', 'pip', 'show', 'yt-dlp-getpot-wpc']]
+        ].filter(Boolean);
+
+        for (const [cmd, args] of pipCommands) {
+            try {
+                const { stdout } = await execFileAsync(cmd, args);
+                if (stdout.includes('Version:')) {
+                    pluginStatus = 'Active';
+                    break;
+                }
+            } catch (e) {}
         }
+
         debugInfo += `**YouTube Bypasses:**\n`;
         debugInfo += `> **Cookies:** \`${hasCookies ? 'Loaded' : 'None'}\`\n`;
         debugInfo += `> **User-Agent:** \`${process.env.YOUTUBE_USER_AGENT ? 'Custom' : 'Default'}\`\n`;
@@ -126,7 +137,12 @@ export class DebugCommand extends Command {
         }
         debugInfo += `\n`;
 
-        debugInfo += `**Hardware Optimization:**\n`;
+        const dbEngine = (process.env.CLOUDFLARE_D1_TOKEN && process.env.CLOUDFLARE_D1_DATABASE_ID) 
+            ? 'Cloudflare D1 (Serverless SQLite)' 
+            : 'Local bun:sqlite (WAL Mode)';
+
+        debugInfo += `**Storage & Hardware:**\n`;
+        debugInfo += `> **Database Engine:** \`${dbEngine}\`\n`;
         debugInfo += `> **Threads:** \`${hardwareOptimization.threads}\`\n`;
         debugInfo += `> **Buffer:** \`${hardwareOptimization.bufferSizeMB} MB\`\n`;
         debugInfo += `> **Disk Type:** \`${hardwareOptimization.diskType.toUpperCase()}\`\n\n`;
@@ -184,9 +200,60 @@ export class HelpCommand extends Command {
     async run(ctx) {
         const category = ctx.options.category;
 
-        if (category) {
-            // simplified category help
-            const embed = new Embed().setColor('#5865F2').setTitle(`${category.toUpperCase()} Commands`);
+        const categoryData = {
+            playing: {
+                title: '🎶 Playing Music Commands',
+                fields: [
+                    { name: '`/play <query>`', value: 'Play a track or playlist from YouTube, Spotify, SoundCloud, Bandcamp, Vimeo, Twitch, or direct audio link.' },
+                    { name: '`/forceplay <query>`', value: 'Force play a song immediately, clearing or interrupting current playback.' },
+                    { name: '`/playnext <query>`', value: 'Add a track to the very front of the queue to play next.' },
+                    { name: '`/search <query> [platform]`', value: 'Search interactively on YouTube or SoundCloud and pick a result.' },
+                    { name: '`/radio <preset|url>`', value: 'Stream live internet radio stations or built-in presets (lofi, jazz, synthwave, etc.).' }
+                ]
+            },
+            playback: {
+                title: '⏯️ Playback Control Commands',
+                fields: [
+                    { name: '`/pause`', value: 'Pause current audio playback.' },
+                    { name: '`/resume`', value: 'Resume paused audio playback.' },
+                    { name: '`/stop`', value: 'Stop playback, clear queue, and leave voice channel.' },
+                    { name: '`/volume <0-200>`', value: 'Adjust playback volume percentage.' },
+                    { name: '`/seek <timestamp>`', value: 'Seek to a specific timestamp in the current song (e.g. `1:30`, `90`).' },
+                    { name: '`/replay`', value: 'Restart the currently playing song from the beginning.' },
+                    { name: '`/previous`', value: 'Play the previously played song from history.' }
+                ]
+            },
+            queue: {
+                title: '📋 Queue Commands',
+                fields: [
+                    { name: '`/queue [page]`', value: 'View the paginated song queue.' },
+                    { name: '`/nowplaying` / `/np`', value: 'Show interactive Now Playing embed with live progress bar.' },
+                    { name: '`/shuffle`', value: 'Randomize the order of songs in the queue.' },
+                    { name: '`/clear`', value: 'Remove all upcoming songs from the queue.' },
+                    { name: '`/remove <position>`', value: 'Remove a specific song by its queue position.' },
+                    { name: '`/move <from> <to>`', value: 'Reorder a song from one position to another.' },
+                    { name: '`/jump <position>` / `/skipto`', value: 'Jump directly to a song in the queue.' },
+                    { name: '`/skip` / `/voteskip`', value: 'Skip the current track (or start a vote skip).' }
+                ]
+            },
+            utility: {
+                title: '🔧 Utility Commands',
+                fields: [
+                    { name: '`/help [category]`', value: 'Display command guide and category breakdowns.' },
+                    { name: '`/ping`', value: 'Check bot latency, gateway ping, and YouTube proxy status.' },
+                    { name: '`/debug`', value: 'View detailed server hardware, yt-dlp, FFmpeg, and voice stream diagnostics.' },
+                    { name: '`/lyrics [query]`', value: 'Search and display song lyrics.' }
+                ]
+            }
+        };
+
+        if (category && categoryData[category]) {
+            const data = categoryData[category];
+            const embed = new Embed()
+                .setColor('#5865F2')
+                .setTitle(data.title)
+                .addFields(data.fields)
+                .setFooter({ text: 'Powered by Seyfert' });
             await ctx.write({ embeds: [embed] });
             return;
         }
@@ -195,12 +262,12 @@ export class HelpCommand extends Command {
             .setColor('#5865F2')
             .setTitle('🎵 Music Bot Commands')
             .addFields(
-                { name: '🎶 Playing Music', value: '`/play` `/search` `/lyrics`', inline: true },
-                { name: '⏯️ Playback Control', value: '`/pause` `/resume` `/stop` `/volume`', inline: true },
-                { name: '📋 Queue', value: '`/queue` `/nowplaying` `/shuffle` `/clear` `/remove` `/move` `/jump`', inline: true },
-                { name: '🔧 Utility', value: '`/help` `/ping` `/debug`', inline: true }
+                { name: '🎶 Playing Music', value: '`/play` `/forceplay` `/playnext` `/search` `/radio`', inline: false },
+                { name: '⏯️ Playback Control', value: '`/pause` `/resume` `/stop` `/volume` `/seek` `/replay` `/previous`', inline: false },
+                { name: '📋 Queue Management', value: '`/queue` `/nowplaying` `/shuffle` `/clear` `/remove` `/move` `/jump` `/skip` `/voteskip`', inline: false },
+                { name: '🔧 Utility', value: '`/help` `/ping` `/debug` `/lyrics`', inline: false }
             )
-            .setFooter({ text: 'Powered by Seyfert' });
+            .setFooter({ text: 'Use /help category:<name> for detailed usage of any section' });
 
         await ctx.write({ embeds: [helpEmbed] });
     }
