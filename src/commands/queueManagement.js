@@ -65,8 +65,8 @@ export class RemoveCommand extends Command {
         if (!voiceChannelId) return;
         
         const index = ctx.options.index;
-        if (index > queue.songs.length) {
-            return ctx.write({ content: `Invalid index. Queue only has ${queue.songs.length} songs.`, flags: 64 });
+        if (index >= queue.songs.length) {
+            return ctx.write({ content: `Invalid index. Queue only has ${queue.songs.length - 1} upcoming songs.`, flags: 64 });
         }
         
         // The queue UI displays the first upcoming song as '1.' which corresponds to queue.songs[1]
@@ -111,8 +111,8 @@ export class MoveCommand extends Command {
         const from = ctx.options.from;
         const to = ctx.options.to;
         
-        if (from > queue.songs.length || to > queue.songs.length) {
-            return ctx.write({ content: `Invalid positions. Queue only has ${queue.songs.length} songs.`, flags: 64 });
+        if (from >= queue.songs.length || to >= queue.songs.length) {
+            return ctx.write({ content: `Invalid positions. Queue only has ${queue.songs.length - 1} upcoming songs.`, flags: 64 });
         }
         
         const moved = musicManager.move(ctx.guildId, from, to);
@@ -140,8 +140,8 @@ export class JumpCommand extends Command {
         if (!voiceChannelId) return;
         
         const index = ctx.options.index;
-        if (index > queue.songs.length) {
-            return ctx.write({ content: `Invalid index. Queue only has ${queue.songs.length} songs.`, flags: 64 });
+        if (index >= queue.songs.length) {
+            return ctx.write({ content: `Invalid index. Queue only has ${queue.songs.length - 1} upcoming songs.`, flags: 64 });
         }
         
         const targetSong = queue.songs[index];

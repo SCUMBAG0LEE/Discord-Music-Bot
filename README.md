@@ -35,7 +35,6 @@ A feature-rich, ultra-high-performance Discord music bot with **YouTube, Spotify
 - **Opus Passthrough Engine** — When YouTube serves pre-encoded Opus audio (format 251), FFmpeg performs a zero-cost container remux (WebM → OggOpus) instead of re-encoding, preserving original quality at ~0% CPU
 - **Audio Prefetch Pipeline** — While the current song plays, the next track in queue is downloaded in the background for gapless transitions
 - **24/7 Mode** — Keep the bot in voice channel indefinitely
-- **Volume Control** — 0-200% range
 - **Vote Skip** — Democratic skipping with configurable ratio based on voice channel members
 - **Song in Status** — Show current song as bot activity (Streaming badge for YouTube/Twitch)
 
@@ -62,7 +61,7 @@ src/
 │   ├── playlists.js         # Custom playlists (/savelist, /loadlist, /playlists, etc.)
 │   ├── playnext.js          # /playnext
 │   ├── queue.js             # /queue
-│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move
+│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump
 │   ├── search.js            # /search
 │   ├── settings.js          # /settings
 │   ├── skip.js              # /skip
@@ -210,7 +209,6 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
 | `/stop` | Stop and disconnect |
-| `/volume <0-200>` | Set playback volume (%) |
 | `/seek <timestamp>` | Jump to position (e.g., `1:30`, `90`) |
 | `/replay` | Restart current song |
 | `/previous` | Play the previous song |

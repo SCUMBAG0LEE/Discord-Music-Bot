@@ -1,12 +1,13 @@
 import { Command, Declare, Options, Embed, createStringOption, createIntegerOption, createNumberOption, createBooleanOption, createChannelOption, createRoleOption, createUserOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
 import { loadSettings, setSetting } from '../services/serverSettings.js';
-import { isOwner, isDJ, djOnlyError, verifyVoiceConnection } from '../utils/permissions.js';
+import { isOwner, isDJ, djOnlyError, verifyVoiceConnection, PermissionFlagsBits } from '../utils/permissions.js';
 
 // Helper to check Administrator permissions or owner
 function isAdmin(ctx) {
+    if (!ctx.member) return false;
     if (isOwner(ctx.member.id)) return true;
-    if (ctx.member.permissions.has('Administrator')) return true;
+    if (ctx.member.permissions.has([PermissionFlagsBits.Administrator])) return true;
     return false;
 }
 
