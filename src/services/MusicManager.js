@@ -1338,12 +1338,13 @@ export class MusicManager {
                     }
                 });
 
-                // Determine if the source is already Opus 48kHz stereo (format 251 on YouTube) — if so, we can just
-                // remux the container (WebM → OggOpus) with zero CPU cost instead of re-encoding.
+                // Determine if the source is already in a native Opus/Ogg container (format .opus or .ogg) — if so, we can just
+                // remux the container with zero CPU cost. For WebM format 251, transcode to 48kHz Stereo Opus to avoid packet header errors.
                 const sourceCodec = song._ytDlpData?.acodec || '';
                 const sampleRate = song._ytDlpData?.asr || 48000;
                 const channels = song._ytDlpData?.audio_channels || 2;
-                const isAlreadyOpus = (sourceCodec === 'opus' || song._ytDlpData?.format_id === '251') && sampleRate === 48000 && channels === 2;
+                const ext = (song._ytDlpData?.ext || '').toLowerCase();
+                const isAlreadyOpus = (ext === 'opus' || ext === 'ogg') && sourceCodec === 'opus' && sampleRate === 48000 && channels === 2;
 
                 if (!song._ytDlpData) song._ytDlpData = {};
                 song._ytDlpData._transportMode = song.prefetchFilePath 
@@ -1351,7 +1352,7 @@ export class MusicManager {
                     : 'yt-dlp Download-to-Disk';
 
                 if (isAlreadyOpus) {
-                    // Zero-cost codec copy: just remux WebM/Opus → OggOpus container for Discord
+                    // Zero-cost codec copy for native .opus / .ogg containers
                     logger.debug('MusicManager', `Opus passthrough (remux only) for: ${song.title}`);
                     song._ytDlpData._processingMode = 'Opus Passthrough (-c:a copy)';
                     ffmpegArgs = [
