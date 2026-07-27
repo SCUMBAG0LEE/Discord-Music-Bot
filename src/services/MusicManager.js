@@ -1521,7 +1521,7 @@ export class MusicManager {
         }
     }
 
-    handleQueueEnd(guildId, queue) {
+    async handleQueueEnd(guildId, queue) {
         queue.playing = false;
         if (queue.lastNowPlayingMessage) {
             try {
