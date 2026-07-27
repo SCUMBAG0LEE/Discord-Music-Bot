@@ -1110,7 +1110,7 @@ export class MusicManager {
                 logger.debug('Prefetch', `[${nextSong.title}] STDERR: ${data.toString().trim()}`);
             });
 
-            ytdlpChildProcess.on('close', (code) => {
+            ytdlpChildProcess.on('close', async (code) => {
                 nextSong.isPrefetching = false;
 
                 if (code === 0) {
