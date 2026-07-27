@@ -158,6 +158,7 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `YOUTUBE_PROXY` | ❌ | Optional HTTP/SOCKS5 proxy URL to route yt-dlp traffic through to bypass hard IP blocks |
 | `YOUTUBE_COOKIES` | ❌ | Accepts a file path or a Base64 encoded string of your cookies file (Crucial for Docker/Heroku) |
 | `YOUTUBE_USER_AGENT` | ❌ | The exact User-Agent string from the browser used to export your cookies |
+| `YOUTUBE_PO_TOKEN` | ❌ | Optional manual YouTube Proof-of-Origin token string |
 | `SKIP_COMMAND_UPLOAD` | ❌ | Set `true` to skip uploading commands on startup (faster restarts) |
 
 > **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
@@ -313,7 +314,7 @@ bun run dev
 
 ## 📜 Version History
 
-- **v5.4.0** — Audio Engine Overhaul: Opus passthrough (zero-CPU remux when source is already Opus), 48kHz Stereo audio enforcer (fixes silent playback on SoundCloud/radio/non-Opus tracks), next-track prefetch pipeline for gapless transitions, fallback metadata isolation (fixes stale YouTube headers on fallback tracks), dynamic `/debug` stream & transport engine breakdown, component & command hardening (queue embed pagination, uncached channel fetch fallback, skip button fix), full code audit with 10+ fixes
+- **v5.4.0** — Audio Engine & Diagnostic Overhaul: 512KB RAM stream buffer for zero-stutter audio, Opus passthrough (zero-CPU remux for format 251), 48kHz Stereo audio enforcer, next-track prefetch pipeline for 0ms gapless transitions, streamlined `/debug` stream status & expanded owner `/systeminfo` dashboard (Host IPv4/v6, Proxy Outbound IPv4/v6, dual Bot & Host Server uptimes, OS User account, FFmpeg & yt-dlp binary paths), component & command hardening (queue embed pagination, uncached channel fetch fallback, skip button fix), 100% cross-platform POSIX/Win32 execution.
 - **v5.3.0** — Core Engine Rewrite: Added Hardware Optimization Engine, Direct-to-Disk stream routing, Native Opus Priority Protocol, removed legacy soxr upsampler for massive CPU gains, and unified FFmpeg fallback processes.
 - **v5.2.0** — Inactivity warnings & voice validation: Created global voice channel connection validator, protected all commands against outside interference, added empty voice channel disconnect messages, idle queue timeout alerts, and fixed voteskip listener count bug
 - **v5.1.0** — Audio quality & reliability: sodium-native for Opus encryption, SoundCloud routed through yt-dlp (fixed premature stream close), disconnect/reconnect race condition fix, auto-playlist infinite loop guard, song-in-status with Streaming badge, FFmpeg reconnect & CRLF headers, Dailymotion support, 5 full code audits with 20+ bug fixes

@@ -1406,7 +1406,10 @@ export class MusicManager {
                 );
             }
 
-            const ffmpegProcess = new prism.FFmpeg({ args: ffmpegArgs });
+            const ffmpegProcess = new prism.FFmpeg({ 
+                args: ffmpegArgs,
+                highWaterMark: 512 * 1024 // 512 KB stream buffer to prevent stutter under CPU/network spikes
+            });
             
             ffmpegProcess.process.on('error', err => logger.error('FFmpeg', 'Process Error', err));
             ffmpegProcess.process.stderr.on('data', data => logger.debug('FFmpeg', `STDERR: ${data.toString().trim()}`));

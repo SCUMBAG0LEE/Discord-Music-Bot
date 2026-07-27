@@ -362,10 +362,7 @@ export class SystemInfoCommand extends Command {
         }
 
         // User-Agent diagnostics
-        const rawUserAgent = process.env.YOUTUBE_USER_AGENT;
-        const userAgentStr = rawUserAgent 
-            ? (rawUserAgent.length > 55 ? `${rawUserAgent.substring(0, 55)}...` : rawUserAgent) 
-            : 'Default yt-dlp User-Agent';
+        const userAgentStr = process.env.YOUTUBE_USER_AGENT || 'Default yt-dlp User-Agent';
 
         // PoToken diagnostics
         const poTokenStr = process.env.YOUTUBE_PO_TOKEN 
