@@ -1336,13 +1336,13 @@ export class MusicManager {
 
                 if (!song._ytDlpData) song._ytDlpData = {};
                 song._ytDlpData._transportMode = song.prefetchFilePath 
-                    ? 'Prefetched (Local File)' 
-                    : (isSocksProxy ? 'yt-dlp Download (SOCKS Proxy)' : 'yt-dlp Download (Local Temp File)');
+                    ? 'Prefetched Audio File' 
+                    : 'yt-dlp Download-to-Disk';
 
                 if (isAlreadyOpus) {
                     // Zero-cost codec copy: just remux WebM/Opus → OggOpus container for Discord
                     logger.debug('MusicManager', `Opus passthrough (remux only) for: ${song.title}`);
-                    song._ytDlpData._processingMode = 'Opus Passthrough (-c:a copy | 0% CPU)';
+                    song._ytDlpData._processingMode = 'Opus Passthrough (-c:a copy)';
                     ffmpegArgs = [
                         '-hide_banner',
                         '-i', tempFilePath,

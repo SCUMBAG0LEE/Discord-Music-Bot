@@ -161,16 +161,26 @@ export class DebugCommand extends Command {
                 const streamData = currentSong._ytDlpData;
                 const bitrateVal = streamData.abr || streamData.tbr;
                 const bitrateStr = bitrateVal ? `${typeof bitrateVal === 'number' ? bitrateVal.toFixed(1) : bitrateVal} kbps` : 'N/A';
-                const protocolStr = streamData.protocol ? streamData.protocol.toUpperCase() : (process.env.YOUTUBE_PROXY ? 'HTTPS/SOCKS5' : 'HTTPS');
+                
+                // Source Platform & Protocol
+                const platformName = currentSong.sourceType ? currentSong.sourceType.toUpperCase() : (streamData.extractor ? streamData.extractor.toUpperCase() : 'UNKNOWN');
+                const targetProtocol = (currentSong.sourceType === 'radio' || currentSong.isRadio) ? 'HTTP Stream' : 'HTTPS/QUIC';
+                
+                // Proxy Route
+                const proxyScheme = proxyUrl ? (proxyUrl.includes('://') ? proxyUrl.split('://')[0].toUpperCase() : 'PROXY') : '';
+                const proxyLabel = proxyUrl ? `${proxyScheme} Proxy` : 'Direct (No Proxy)';
 
                 debugInfo += `\n**Stream Info:**\n`;
                 debugInfo += `> **Engine Mode:** \`${streamData._processingMode || 'N/A'}\`\n`;
                 debugInfo += `> **Transport:** \`${streamData._transportMode || 'N/A'}\`\n`;
+                debugInfo += `> **Source Platform:** \`${platformName} (${targetProtocol})\`\n`;
+                debugInfo += `> **Proxy Route:** \`${proxyLabel}\`\n`;
+                debugInfo += `> **Audio Delivery:** \`UDP (Discord Voice Socket)\`\n`;
                 debugInfo += `> **Source Codec:** \`${streamData.acodec || 'N/A'}\`\n`;
                 debugInfo += `> **Bitrate:** \`${bitrateStr}\`\n`;
                 debugInfo += `> **Sample Rate:** \`${streamData.asr ? `${streamData.asr} Hz` : 'N/A'}\`\n`;
-                debugInfo += `> **Format ID:** \`${streamData.format_id || 'N/A'} (${streamData.ext || 'N/A'})\`\n`;
-                debugInfo += `> **Protocol:** \`${protocolStr}\`\n`;
+                const codecExt = (streamData.acodec && streamData.ext) ? `${streamData.acodec}/${streamData.ext}` : (streamData.ext || 'N/A');
+                debugInfo += `> **Format ID:** \`${streamData.format_id || 'N/A'} (${codecExt})\`\n`;
             }
         } else {
             debugInfo += `**Voice Connection:** None\n`;

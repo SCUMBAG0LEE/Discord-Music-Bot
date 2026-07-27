@@ -312,11 +312,64 @@ export class SystemInfoCommand extends Command {
         } catch(e) {}
 
         const cpus = os.cpus();
-        const cpuModel = cpus[0]?.model || 'Unknown CPU';
+        let cpuModel = cpus[0]?.model?.trim();
+        if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
+            try {
+                if (fs.existsSync('/proc/cpuinfo')) {
+                    const cpuInfo = fs.readFileSync('/proc/cpuinfo', 'utf8');
+                    const match = cpuInfo.match(/model name\s*:\s*(.+)/i) || cpuInfo.match(/Hardware\s*:\s*(.+)/i);
+                    if (match && match[1]) {
+                        cpuModel = match[1].trim();
+                    }
+                }
+            } catch (e) {}
+        }
+        if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
+            cpuModel = `${os.arch().toUpperCase()} Processor`;
+        }
+
         const coreCount = cpus.length;
         const totalMem = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
         const freeMem = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
-        const osInfo = `${os.type()} ${os.release()} (${os.arch()})`;
+        let osName = os.type();
+        let kernelVersion = `${os.type()} ${os.release()}`;
+
+        if (os.type() === 'Windows_NT') {
+            kernelVersion = `NT ${os.release()}`;
+            const buildNum = parseInt(os.release().split('.')[2] || '0', 10);
+            if (buildNum >= 22000) {
+                osName = 'Windows 11';
+            } else if (buildNum >= 10240) {
+                osName = 'Windows 10 / Server 2016+';
+            } else if (buildNum >= 9200) {
+                osName = 'Windows 8.1';
+            } else {
+                osName = 'Windows';
+            }
+        } else if (os.type() === 'Darwin') {
+            kernelVersion = `Darwin ${os.release()}`;
+            const darwinMajor = parseInt(os.release().split('.')[0] || '0', 10);
+            const macVersionMap = {
+                24: 'macOS 15 (Sequoia)',
+                23: 'macOS 14 (Sonoma)',
+                22: 'macOS 13 (Ventura)',
+                21: 'macOS 12 (Monterey)',
+                20: 'macOS 11 (Big Sur)',
+                19: 'macOS 10.15 (Catalina)'
+            };
+            osName = macVersionMap[darwinMajor] || 'macOS';
+        } else if (os.type() === 'Linux') {
+            kernelVersion = `Linux ${os.release()}`;
+            try {
+                if (fs.existsSync('/etc/os-release')) {
+                    const releaseContent = fs.readFileSync('/etc/os-release', 'utf8');
+                    const match = releaseContent.match(/PRETTY_NAME="([^"]+)"/) || releaseContent.match(/PRETTY_NAME=(.+)/);
+                    if (match && match[1]) {
+                        osName = match[1].replace(/"/g, '').trim();
+                    }
+                }
+            } catch (e) {}
+        }
 
         const embed = new Embed()
             .setTitle('🔧 Host Server Diagnostics')
@@ -328,7 +381,7 @@ export class SystemInfoCommand extends Command {
                     inline: true 
                 },
                 { 
-                    name: '💾 Memory (Node.js)', 
+                    name: '💾 Memory (Node.js / Bun)', 
                     value: `Heap Used: ${(used.heapUsed / 1024 / 1024).toFixed(2)} MB\nRSS: ${(used.rss / 1024 / 1024).toFixed(2)} MB`, 
                     inline: true 
                 },
@@ -343,8 +396,8 @@ export class SystemInfoCommand extends Command {
                     inline: false 
                 },
                 { 
-                    name: '🐧 OS Platform', 
-                    value: `\`${osInfo}\``, 
+                    name: '🐧 Platform & Kernel', 
+                    value: `> **OS:** \`${osName} (${os.arch()})\`\n> **Kernel:** \`${kernelVersion}\``, 
                     inline: false 
                 }
             ])
