@@ -1,6 +1,6 @@
 {
   "name": "discord-music-bot",
-  "version": "5.3.0",
+  "version": "5.4.0",
   "type": "module",
   "description": "A feature-rich, high-performance Discord music bot using Seyfert + yt-dlp",
   "main": "src/index.js",

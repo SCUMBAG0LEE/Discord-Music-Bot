@@ -460,8 +460,9 @@ async function fetchYtDlpPlaylistTracks(url) {
             originalUrl: data.url || `https://www.youtube.com/watch?v=${data.id}`,
             duration,
             sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : 'youtube',
-            // Only keep the fields needed for streaming — discard the rest to save memory
-            _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url }
+            // flat-playlist results only contain webpage URLs, not audio stream URLs.
+            // Omit _ytDlpData so playNext() triggers a full metadata fetch before streaming.
+            _ytDlpData: null
         };
     });
 
@@ -591,8 +592,8 @@ async function getTrackInfo(query, searchPrefix = '') {
                 durationInSec: data.duration,
                 durationRaw: data.duration ? `${Math.floor(data.duration / 60)}:${(data.duration % 60).toString().padStart(2, '0')}` : 'Live/Unknown',
                 sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other'),
-                // Only keep the fields needed for streaming — discard the rest to save memory
-                _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url }
+                // Keep only fields needed for streaming + codec detection (Opus passthrough)
+                _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url, acodec: data.acodec, format_id: data.format_id }
             };
         } catch (e) {
             lastError = e;
@@ -861,7 +862,7 @@ export class MusicManager {
         player.on('stateChange', (oldState, newState) => {
             logger.debug('AudioPlayer', `${oldState.status} -> ${newState.status}`);
         });
-        player.on('error', err => logger.error('AudioPlayer', 'Player error', err));
+        // Error handling is done by the dedicated handler below (line ~913)
 
         connection.subscribe(player);
 
@@ -902,7 +903,16 @@ export class MusicManager {
                         const info = await getTrackInfo(`${relatedTitle} mix`);
                         
                         if (info && info.title) {
-                            queue.songs.push({ title: info.title, url: info.originalUrl, duration: info.durationRaw, uploader: 'Autoplay' });
+                            queue.songs.push({
+                                title: info.title,
+                                originalUrl: info.originalUrl,
+                                duration: info.durationRaw,
+                                sourceType: info.sourceType || 'youtube',
+                                _ytDlpData: info._ytDlpData || null,
+                                fallbackStage: 0,
+                                requesterId: null,
+                                requesterName: 'Autoplay'
+                            });
                             this.playNext(guildId);
                         } else { this.handleQueueEnd(guildId, queue); }
                     } catch (e) { this.handleQueueEnd(guildId, queue); }
@@ -1068,6 +1078,7 @@ export class MusicManager {
                 '-f', '251/bestaudio/best',
                 '-o', tempFilePath, 
                 '--no-part', 
+                '--print-json',
                 '--buffer-size', `${hardwareOptimization.bufferSizeMB}M`, 
                 '--socket-timeout', '15', 
                 '--no-warnings', 
@@ -1075,19 +1086,75 @@ export class MusicManager {
             ]);
             const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
             
+            // Store process reference for cleanup (leave/stop), but NOT the file path yet
+            nextSong.prefetchProcess = ytdlpChildProcess;
+
+            // Capture stdout JSON metadata for codec detection (acodec, format_id)
+            let stdoutChunks = [];
+            ytdlpChildProcess.stdout.on('data', (data) => {
+                stdoutChunks.push(data);
+            });
+            
             ytdlpChildProcess.stderr.on('data', (data) => {
-                logger.error('Prefetch yt-dlp', `[${nextSong.title}] STDERR: ${data.toString().trim()}`);
+                logger.debug('Prefetch', `[${nextSong.title}] STDERR: ${data.toString().trim()}`);
             });
 
-            nextSong.prefetchFilePath = tempFilePath;
-            nextSong.prefetchProcess = ytdlpChildProcess;
-            
-            ytdlpChildProcess.on('close', () => {
+            ytdlpChildProcess.on('close', (code) => {
                 nextSong.isPrefetching = false;
+
+                if (code === 0) {
+                    try {
+                        if (fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1024) {
+                            // Only now mark the file as ready for consumption
+                            nextSong.prefetchFilePath = tempFilePath;
+                            
+                            // Parse yt-dlp JSON to populate _ytDlpData (needed for Opus passthrough detection)
+                            try {
+                                const jsonStr = Buffer.concat(stdoutChunks).toString();
+                                const metadata = JSON.parse(jsonStr);
+                                if (!nextSong._ytDlpData) {
+                                    nextSong._ytDlpData = metadata;
+                                } else {
+                                    // Merge codec info without overwriting existing data
+                                    nextSong._ytDlpData.acodec = metadata.acodec || nextSong._ytDlpData.acodec;
+                                    nextSong._ytDlpData.format_id = metadata.format_id || nextSong._ytDlpData.format_id;
+                                }
+                            } catch (e) {
+                                // JSON parse failed — not critical, codec detection will fall back to transcode
+                                logger.debug('Prefetch', `Could not parse yt-dlp metadata for ${nextSong.title}`);
+                            }
+
+                            const sizeMB = (fs.statSync(tempFilePath).size / (1024 * 1024)).toFixed(1);
+                            logger.info('Prefetch', `Ready: ${nextSong.title} (${sizeMB} MB)`);
+                        } else {
+                            // File missing or too small despite exit code 0
+                            nextSong.prefetchProcess = null;
+                            fsPromises.unlink(tempFilePath).catch(() => {});
+                            logger.debug('Prefetch', `File missing/empty after successful exit for: ${nextSong.title}`);
+                        }
+                    } catch (e) {
+                        nextSong.prefetchProcess = null;
+                        logger.debug('Prefetch', `Post-download check failed for ${nextSong.title}: ${e.message}`);
+                    }
+                } else {
+                    // Download failed — clean up and let the normal download path handle it later
+                    nextSong.prefetchProcess = null;
+                    nextSong.prefetchFilePath = null;
+                    fsPromises.unlink(tempFilePath).catch(() => {});
+                    logger.debug('Prefetch', `Failed (exit code ${code}): ${nextSong.title}`);
+                }
+                stdoutChunks = null; // Free memory
+            });
+
+            ytdlpChildProcess.on('error', (err) => {
+                nextSong.isPrefetching = false;
+                nextSong.prefetchProcess = null;
+                logger.debug('Prefetch', `Process error for ${nextSong.title}: ${err.message}`);
             });
         } catch (e) {
             nextSong.isPrefetching = false;
-            logger.error('Prefetch', 'Failed to prefetch next track', e);
+            nextSong.prefetchProcess = null;
+            logger.error('Prefetch', 'Failed to start prefetch', e);
         }
     }
 
@@ -1192,73 +1259,85 @@ export class MusicManager {
                     });
                 }
                 
-                // Wait for yt-dlp to create the file and buffer enough data for FFmpeg to probe
-                // Uses fs.watch for event-driven notification instead of sync polling
-                await new Promise((resolve) => {
-                    const timeout = setTimeout(() => {
-                        if (watcher) watcher.close();
-                        resolve();
-                    }, 15000);
-
-                    const checkReady = () => {
-                        try {
-                            if (fs.existsSync(tempFilePath)) {
-                                const stats = fs.statSync(tempFilePath);
-                                if (stats.size > 1024) {
-                                    clearTimeout(timeout);
-                                    if (watcher) watcher.close();
-                                    resolve();
-                                    return true;
-                                }
-                            }
-                        } catch (e) { /* file may not exist yet */ }
-
-                        // Process exited (finished fast or failed)
-                        if (queue.ytdlpChildProcess && queue.ytdlpChildProcess.exitCode !== null) {
-                            clearTimeout(timeout);
-                            if (watcher) watcher.close();
-                            resolve();
-                            return true;
-                        }
-                        return false;
+                // Wait for yt-dlp to fully finish downloading before handing off to FFmpeg.
+                // Audio files are small (~3-10MB), so waiting for completion is faster than dealing
+                // with partial-read errors ("Error parsing Opus packet header" from half-written files).
+                await new Promise((resolve, reject) => {
+                    let settled = false;
+                    const settle = (fn, arg) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timeout);
+                        fn(arg);
                     };
 
-                    // Check immediately in case the prefetch already completed
-                    if (checkReady()) return;
-
-                    // Watch the directory for the file to appear/change
-                    let watcher;
-                    try {
-                        watcher = fs.watch(path.dirname(tempFilePath), (eventType, filename) => {
-                            if (filename === path.basename(tempFilePath)) {
-                                checkReady();
+                    // 120s timeout — generous for slow proxies, but prevents infinite hangs
+                    const timeout = setTimeout(() => {
+                        try {
+                            if (fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1024) {
+                                settle(resolve);
+                                return;
                             }
-                        });
-                        watcher.on('error', () => { /* ignore watcher errors */ });
-                    } catch (e) {
-                        // fs.watch not supported or failed — fall back to a single delayed check
-                        logger.debug('MusicManager', 'fs.watch unavailable, using delayed check fallback');
-                        setTimeout(checkReady, 2000);
+                        } catch (e) { /* stat failed */ }
+                        settle(reject, new Error(`yt-dlp download timed out — file was never created for: ${song.title}`));
+                    }, 120000);
+
+                    const onExit = (code) => {
+                        try {
+                            if (fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1024) {
+                                settle(resolve);
+                                return;
+                            }
+                        } catch (e) { /* stat failed */ }
+                        settle(reject, new Error(`yt-dlp exited with code ${code} without producing audio for: ${song.title}`));
+                    };
+
+                    // If yt-dlp already exited (prefetch completed), check immediately
+                    if (queue.ytdlpChildProcess && queue.ytdlpChildProcess.exitCode !== null) {
+                        onExit(queue.ytdlpChildProcess.exitCode);
+                        return;
                     }
 
-                    // Also listen for the yt-dlp process exit as a signal
+                    // Otherwise wait for the process to finish
                     if (queue.ytdlpChildProcess) {
-                        queue.ytdlpChildProcess.on('close', checkReady);
+                        queue.ytdlpChildProcess.on('close', onExit);
+                    } else {
+                        // No process (prefetch path) — file should already exist
+                        onExit(0);
                     }
                 });
 
-                // Optimized FFmpeg pipeline for native hardware-aligned instructions (Stereo, 48000Hz PCM/Opus)
-                ffmpegArgs = [
-                    '-hide_banner',
-                    '-threads', hardwareOptimization.threads,
-                    '-i', tempFilePath,
-                    '-analyzeduration', '0',
-                    '-loglevel', 'warning',
-                    '-vn',
-                    '-c:a', 'libopus',
-                    '-b:a', '96k',
-                    '-f', 'opus'
-                ];
+                // Determine if the source is already Opus (format 251) — if so, we can just
+                // remux the container (WebM → OggOpus) with zero CPU cost instead of re-encoding.
+                const sourceCodec = song._ytDlpData?.acodec || '';
+                const isAlreadyOpus = sourceCodec === 'opus' || (song._ytDlpData?.format_id === '251');
+
+                if (isAlreadyOpus) {
+                    // Zero-cost codec copy: just remux WebM/Opus → OggOpus container for Discord
+                    logger.debug('MusicManager', `Opus passthrough (remux only) for: ${song.title}`);
+                    ffmpegArgs = [
+                        '-hide_banner',
+                        '-i', tempFilePath,
+                        '-loglevel', 'warning',
+                        '-vn',
+                        '-c:a', 'copy',
+                        '-f', 'opus'
+                    ];
+                } else {
+                    // Non-Opus source (AAC, Vorbis, etc.) — must transcode to Opus for Discord
+                    logger.debug('MusicManager', `Transcoding ${sourceCodec || 'unknown'} → Opus for: ${song.title}`);
+                    ffmpegArgs = [
+                        '-hide_banner',
+                        '-threads', hardwareOptimization.threads,
+                        '-i', tempFilePath,
+                        '-analyzeduration', '0',
+                        '-loglevel', 'warning',
+                        '-vn',
+                        '-c:a', 'libopus',
+                        '-b:a', '128k',
+                        '-f', 'opus'
+                    ];
+                }
             } else {
                 let actualStreamUrl = streamUrl;
                 if (!isDirectRadioStream && song._ytDlpData && song._ytDlpData.url) {

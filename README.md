@@ -32,7 +32,8 @@ A feature-rich, ultra-high-performance Discord music bot with **YouTube, Spotify
 - **Previous** — Play the previous song (50 song history)
 - **Hardware Optimization Engine** — Automatically adapts FFmpeg threads and stream buffers to your host server's specs (RAM/CPU/Disk)
 - **Zero-Overhead Direct-to-Disk Stream** — Bypasses Node.js V8 garbage collection completely, drastically improving voice packet latency and preventing audio stutter
-- **Opus Priority Protocol** — Explicitly extracts pre-encoded Opus data from YouTube, resulting in perfectly matched Discord bitrate headers with minimal CPU usage
+- **Opus Passthrough Engine** — When YouTube serves pre-encoded Opus audio (format 251), FFmpeg performs a zero-cost container remux (WebM → OggOpus) instead of re-encoding, preserving original quality at ~0% CPU
+- **Audio Prefetch Pipeline** — While the current song plays, the next track in queue is downloaded in the background for gapless transitions
 - **24/7 Mode** — Keep the bot in voice channel indefinitely
 - **Volume Control** — 0-200% range
 - **Vote Skip** — Democratic skipping with configurable ratio based on voice channel members
@@ -157,7 +158,6 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `YOUTUBE_PROXY` | ❌ | Optional HTTP/SOCKS5 proxy URL to route yt-dlp traffic through to bypass hard IP blocks |
 | `YOUTUBE_COOKIES` | ❌ | Accepts a file path or a Base64 encoded string of your cookies file (Crucial for Docker/Heroku) |
 | `YOUTUBE_USER_AGENT` | ❌ | The exact User-Agent string from the browser used to export your cookies |
-| `DJ_ROLE_ID` | ❌ | Role ID that can use DJ-only commands (skip, stop, clear) |
 | `SKIP_COMMAND_UPLOAD` | ❌ | Set `true` to skip uploading commands on startup (faster restarts) |
 
 > **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
@@ -313,6 +313,7 @@ bun run dev
 
 ## 📜 Version History
 
+- **v5.4.0** — Audio Engine Overhaul: Opus passthrough (zero-CPU remux when source is already Opus), next-track prefetch pipeline for gapless playback, fixed SOCKS proxy download race condition ("No such file" errors), fixed autoplay pushing malformed song objects, fixed flat-playlist metadata causing unnecessary retry cycles, added codec-aware FFmpeg pipeline (copy vs transcode), bumped transcode bitrate from 96k to 128k, full code audit with 6 fixes
 - **v5.3.0** — Core Engine Rewrite: Added Hardware Optimization Engine, Direct-to-Disk stream routing, Native Opus Priority Protocol, removed legacy soxr upsampler for massive CPU gains, and unified FFmpeg fallback processes.
 - **v5.2.0** — Inactivity warnings & voice validation: Created global voice channel connection validator, protected all commands against outside interference, added empty voice channel disconnect messages, idle queue timeout alerts, and fixed voteskip listener count bug
 - **v5.1.0** — Audio quality & reliability: sodium-native for Opus encryption, SoundCloud routed through yt-dlp (fixed premature stream close), disconnect/reconnect race condition fix, auto-playlist infinite loop guard, song-in-status with Streaming badge, FFmpeg reconnect & CRLF headers, Dailymotion support, 5 full code audits with 20+ bug fixes
@@ -336,7 +337,7 @@ bun run dev
 - **Using a Proxy (For Hard IP Blocks):** Even with cookies and tokens, YouTube may outright ban your server's IP address at the TCP level. If this happens:
   1. Obtain a custom HTTP, HTTPS, or SOCKS5 proxy (e.g. from a residential proxy provider).
   2. Set the `YOUTUBE_PROXY` environment variable to your proxy URL (e.g., `socks5://username:password@ip:port`). All yt-dlp requests will automatically route through it.
-  3. **Note on SOCKS5 proxies:** FFmpeg cannot natively route traffic through SOCKS proxies. When a SOCKS5 proxy is detected, the bot automatically switches to download-to-file mode (yt-dlp downloads through the proxy, then FFmpeg reads the local file). HTTP/HTTPS proxies support both direct streaming and download modes.
+  3. **Note on SOCKS5 proxies:** FFmpeg cannot natively route traffic through SOCKS proxies. When a SOCKS5 proxy is detected, the bot automatically switches to download-to-file mode (yt-dlp fully downloads through the proxy, then FFmpeg reads the completed local file). This also enables the Opus passthrough optimization since the file is complete before playback. HTTP/HTTPS proxies support both direct streaming and download modes.
 - Ensure yt-dlp is installed and up-to-date: `pip install -U yt-dlp`
 - If region-restricted: yt-dlp's `--geo-bypass` is enabled by default
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
