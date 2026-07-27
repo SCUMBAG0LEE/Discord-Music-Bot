@@ -1428,9 +1428,16 @@ export class MusicManager {
             queue.resource = resource;
 
             queue.player.play(resource);
-            queue.playing = true;
-            queue.paused = false;
-            
+             // Clean up button controls on previous Now Playing message to keep chat tidy
+            if (queue.lastNowPlayingMessage) {
+                try {
+                    if (typeof queue.lastNowPlayingMessage.edit === 'function') {
+                        await queue.lastNowPlayingMessage.edit({ components: [] });
+                    }
+                } catch (e) { /* message deleted or unreachable */ }
+                queue.lastNowPlayingMessage = null;
+            }
+
             const settings = await loadSettings(guildId);
             if (settings.announceNowPlaying !== false) {
                 const embed = new Embed()
@@ -1439,10 +1446,11 @@ export class MusicManager {
                     .setColor('#5865F2')
                     .setFooter({ text: `Duration: ${song.duration}` });
                     
-                await this.sendMessage(queue, { 
+                const sentMsg = await this.sendMessage(queue, { 
                     embeds: [embed],
                     components: [getPlayerControls(queue)]
                 });
+                if (sentMsg) queue.lastNowPlayingMessage = sentMsg;
             }
             this.updateStatus(song.title);
             
@@ -1461,13 +1469,16 @@ export class MusicManager {
                 if (song.sourceType === 'soundcloud') {
                     await this.sendMessage(queue, { content: `⚠️ SoundCloud stream failed, attempting YouTube fallback for **${song.title}**...` });
                     try {
-                        const fallbackInfo = await getTrackInfo(song.title, 'ytsearch1:');
-                        song.originalUrl = fallbackInfo.originalUrl;
-                        song.sourceType = fallbackInfo.sourceType;
-                        song._ytDlpData = fallbackInfo._ytDlpData;
-                        return this.playNext(guildId);
-                    } catch (fallbackError) {
-                        logger.error('MusicManager', 'YouTube fallback search failed', fallbackError);
+                        const ytQuery = `${song.title} ${song.artist || ''}`;
+                        const searchResult = await this.search(ytQuery);
+                        if (searchResult && searchResult.tracks && searchResult.tracks.length > 0) {
+                            const fallbackTrack = searchResult.tracks[0];
+                            fallbackTrack.fallbackStage = 1;
+                            queue.songs[0] = fallbackTrack;
+                            return this.playNext(guildId);
+                        }
+                    } catch (e) {
+                        logger.error('MusicManager', `SoundCloud YouTube fallback search failed for ${song.title}`, e);
                     }
                 } else if (song.sourceType === 'youtube' || song.sourceType === 'other') {
                     await this.sendMessage(queue, { content: `⚠️ Stream failed, attempting SoundCloud fallback for **${song.title}**...` });
@@ -1484,7 +1495,14 @@ export class MusicManager {
                 }
             }
             
-            await this.sendMessage(queue, { content: `❌ Could not play **${song.title}** after all fallbacks (skipping to next...)` });
+            // Advanced Stream Fallback Stage 1 -> 2
+            if (song.fallbackStage === 1) {
+                song.fallbackStage = 2;
+                await this.sendMessage(queue, { content: `⚠️ Stream playback issue, attempting secondary direct audio format for **${song.title}**...` });
+                return this.playNext(guildId);
+            }
+            
+            await this.sendMessage(queue, { content: `❌ Playback error for **${song.title}**: ${error.message || 'Stream unplayable'}` });
             
             // Auto skip to the next song if streaming fails
             queue.songs.shift();
@@ -1505,6 +1523,14 @@ export class MusicManager {
 
     handleQueueEnd(guildId, queue) {
         queue.playing = false;
+        if (queue.lastNowPlayingMessage) {
+            try {
+                if (typeof queue.lastNowPlayingMessage.edit === 'function') {
+                    await queue.lastNowPlayingMessage.edit({ components: [] });
+                }
+            } catch (e) {}
+            queue.lastNowPlayingMessage = null;
+        }
         this.updateStatus(null);
         if (!queue.stay247) {
             const timeoutSecs = parseInt(process.env.IDLE_TIMEOUT) || 60;

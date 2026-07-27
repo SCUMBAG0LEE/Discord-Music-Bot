@@ -2,10 +2,10 @@ import { Command, Declare, Embed } from 'seyfert';
 import { musicManager, getPlayerControls } from '../services/MusicManager.js';
 
 @Declare({
-    name: 'np',
+    name: 'nowplaying',
     description: 'Display the currently playing song'
 })
-export default class NowPlayingCommand extends Command {
+export class NowPlayingCommand extends Command {
     async run(ctx) {
         const queue = musicManager.getQueue(ctx.guildId);
         
@@ -26,3 +26,11 @@ export default class NowPlayingCommand extends Command {
         await ctx.write({ embeds: [embed], components: [row] });
     }
 }
+
+@Declare({
+    name: 'np',
+    description: 'Display the currently playing song (alias for /nowplaying)'
+})
+export class NpCommand extends NowPlayingCommand {}
+
+export default NowPlayingCommand;

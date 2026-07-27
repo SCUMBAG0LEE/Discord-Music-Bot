@@ -1,4 +1,4 @@
-import { Command, Declare, Options, Embed, createStringOption } from 'seyfert';
+import { Command, SubCommand, Declare, Options, Embed, createStringOption } from 'seyfert';
 import { dbManager } from '../services/DatabaseManager.js';
 import { musicManager } from '../services/MusicManager.js';
 import { verifyVoiceConnection } from '../utils/permissions.js';
@@ -11,11 +11,11 @@ const nameOption = {
 };
 
 @Declare({
-    name: 'savelist',
+    name: 'save',
     description: 'Save the current queue as a personal playlist.'
 })
 @Options(nameOption)
-export class SavelistCommand extends Command {
+export class PlaylistSaveSubCommand extends SubCommand {
     async run(ctx) {
         const queue = musicManager.getQueue(ctx.guildId);
         if (!queue || queue.songs.length === 0) {
@@ -23,7 +23,6 @@ export class SavelistCommand extends Command {
         }
 
         const name = ctx.options.name;
-        // Map current queue songs to playlist format
         const songsToSave = queue.songs.map(song => ({
             title: song.title,
             url: song.originalUrl,
@@ -42,11 +41,11 @@ export class SavelistCommand extends Command {
 }
 
 @Declare({
-    name: 'loadlist',
+    name: 'load',
     description: 'Load a saved playlist into the queue.'
 })
 @Options(nameOption)
-export class LoadlistCommand extends Command {
+export class PlaylistLoadSubCommand extends SubCommand {
     async run(ctx) {
         const queue = musicManager.getQueue(ctx.guildId);
         const voiceChannelId = await verifyVoiceConnection(ctx, queue, true);
@@ -55,7 +54,7 @@ export class LoadlistCommand extends Command {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[PlaylistsCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            console.warn(`[PlaylistsCommand] Failed to defer interaction:`, e.message || e);
             return;
         }
 
@@ -73,7 +72,6 @@ export class LoadlistCommand extends Command {
             if (!channel) {
                 return ctx.editOrReply({ content: '❌ Could not fetch your voice channel from the cache.' });
             }
-            // Map playlist songs to play format
             const songsToPlay = playlist.songs.map(song => ({
                 title: song.title,
                 originalUrl: song.url,
@@ -89,11 +87,11 @@ export class LoadlistCommand extends Command {
 }
 
 @Declare({
-    name: 'deletelist',
+    name: 'delete',
     description: 'Delete a saved playlist.'
 })
 @Options(nameOption)
-export class DeletelistCommand extends Command {
+export class PlaylistDeleteSubCommand extends SubCommand {
     async run(ctx) {
         const name = ctx.options.name;
         const { success, error } = await dbManager.deletePlaylist(ctx.member.id, name);
@@ -107,10 +105,10 @@ export class DeletelistCommand extends Command {
 }
 
 @Declare({
-    name: 'playlists',
+    name: 'list',
     description: 'List your saved playlists.'
 })
-export class PlaylistsCommand extends Command {
+export class PlaylistListSubCommand extends SubCommand {
     async run(ctx) {
         const { playlists, error } = await dbManager.listPlaylists(ctx.member.id);
 
@@ -120,7 +118,7 @@ export class PlaylistsCommand extends Command {
 
         if (playlists.length === 0) {
             return ctx.write({ 
-                content: 'You have no saved playlists. Use `/savelist` to create one!',
+                content: 'You have no saved playlists. Use `/playlist save` to create one!',
                 flags: 64 
             });
         }
@@ -133,18 +131,18 @@ export class PlaylistsCommand extends Command {
                     `**${i + 1}.** ${p.name} — ${p.songCount} songs`
                 ).join('\n')
             )
-            .setFooter({ text: 'Use /loadlist <name> to play a playlist' });
+            .setFooter({ text: 'Use /playlist load <name> to play a playlist' });
 
         return ctx.write({ embeds: [embed] });
     }
 }
 
 @Declare({
-    name: 'appendlist',
+    name: 'append',
     description: 'Add the current queue to an existing playlist.'
 })
 @Options(nameOption)
-export class AppendlistCommand extends Command {
+export class PlaylistAppendSubCommand extends SubCommand {
     async run(ctx) {
         const queue = musicManager.getQueue(ctx.guildId);
         if (!queue || queue.songs.length === 0) {
@@ -168,3 +166,37 @@ export class AppendlistCommand extends Command {
         return ctx.write({ content: `➕ Added **${songsToSave.length}** songs to playlist **${name}**` });
     }
 }
+
+// Parent Slash Command: /playlist <save|load|list|delete|append>
+@Declare({
+    name: 'playlist',
+    description: 'Create, load, list, and manage your personal playlists'
+})
+@Options([
+    PlaylistSaveSubCommand,
+    PlaylistLoadSubCommand,
+    PlaylistListSubCommand,
+    PlaylistDeleteSubCommand,
+    PlaylistAppendSubCommand
+])
+export class PlaylistCommand extends Command {}
+
+// Legacy Top-Level Slash Command Exports for backward compatibility
+@Declare({ name: 'savelist', description: 'Alias for /playlist save' })
+@Options(nameOption)
+export class SavelistCommand extends PlaylistSaveSubCommand {}
+
+@Declare({ name: 'loadlist', description: 'Alias for /playlist load' })
+@Options(nameOption)
+export class LoadlistCommand extends PlaylistLoadSubCommand {}
+
+@Declare({ name: 'deletelist', description: 'Alias for /playlist delete' })
+@Options(nameOption)
+export class DeletelistCommand extends PlaylistDeleteSubCommand {}
+
+@Declare({ name: 'playlists', description: 'Alias for /playlist list' })
+export class PlaylistsCommand extends PlaylistListSubCommand {}
+
+@Declare({ name: 'appendlist', description: 'Alias for /playlist append' })
+@Options(nameOption)
+export class AppendlistCommand extends PlaylistAppendSubCommand {}

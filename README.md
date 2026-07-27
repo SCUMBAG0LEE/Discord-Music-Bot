@@ -234,14 +234,13 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 | `/remove <position>` | Remove song at position |
 | `/move <from> <to>` | Move song in queue |
 
-### 💾 Playlists
+### 💾 Playlists & Favorites
 | Command | Description |
 |---------|-------------|
-| `/savelist <name>` | Save current queue as playlist |
-| `/loadlist <name>` | Load and play a saved playlist |
-| `/playlists` | View your saved playlists |
-| `/appendlist <name>` | Add current queue to playlist |
-| `/deletelist <name>` | Delete a saved playlist |
+| `/playlist <save\|load\|list\|delete\|append>` | Manage personal playlists (`/playlist save`, `/playlist load`, `/playlist list`, etc.) |
+| `/favorite <add\|list>` | Save and view favorite songs (`/favorite add`, `/favorite list`) |
+| `/savelist /loadlist /playlists` | Legacy aliases for playlist subcommands |
+| `/like /favorites` | Legacy aliases for favorite subcommands |
 
 ### ⚙️ Settings
 | Command | Description |
@@ -314,7 +313,7 @@ bun run dev
 
 ## 📜 Version History
 
-- **v5.4.0** — Audio Engine & Diagnostic Overhaul: 512KB RAM stream buffer for zero-stutter audio, Opus passthrough (zero-CPU remux for format 251), 48kHz Stereo audio enforcer, next-track prefetch pipeline for 0ms gapless transitions, streamlined `/debug` stream status & expanded owner `/systeminfo` dashboard (Host IPv4/v6, Proxy Outbound IPv4/v6, dual Bot & Host Server uptimes, OS User account, FFmpeg & yt-dlp binary paths), component & command hardening (queue embed pagination, uncached channel fetch fallback, skip button fix), 100% cross-platform POSIX/Win32 execution.
+- **v5.4.0** — Audio Engine, Subcommand & QoL Overhaul: 512KB RAM stream buffer for zero-stutter audio, Opus passthrough (zero-CPU remux for format 251), 0ms gapless next-track prefetching, unified `/playlist` and `/favorite` subcommand parent groups (with legacy command aliases preserved), Single Active Instance UI engine (auto-strips control buttons from older Now Playing embeds), real-time voice channel relocation tracking (bot follows when moved by admins), 15-second empty VC disconnect buffer with smart timer cancellation, instant queue cleanup on admin disconnect, streamlined `/debug` stream status & zero-pause owner `/systeminfo` dashboard (cached hardware specs & 5-min network IP TTL cache), 100% cross-platform POSIX/Win32 execution.
 - **v5.3.0** — Core Engine Rewrite: Added Hardware Optimization Engine, Direct-to-Disk stream routing, Native Opus Priority Protocol, removed legacy soxr upsampler for massive CPU gains, and unified FFmpeg fallback processes.
 - **v5.2.0** — Inactivity warnings & voice validation: Created global voice channel connection validator, protected all commands against outside interference, added empty voice channel disconnect messages, idle queue timeout alerts, and fixed voteskip listener count bug
 - **v5.1.0** — Audio quality & reliability: sodium-native for Opus encryption, SoundCloud routed through yt-dlp (fixed premature stream close), disconnect/reconnect race condition fix, auto-playlist infinite loop guard, song-in-status with Streaming badge, FFmpeg reconnect & CRLF headers, Dailymotion support, 5 full code audits with 20+ bug fixes

@@ -155,31 +155,5 @@ export class JumpCommand extends Command {
     name: 'skipto',
     description: 'Skip to a specific song in the queue (alias for /jump)'
 })
-@Options({
-    position: createIntegerOption({
-        description: 'Position in queue to skip to',
-        required: true,
-        min_value: 1
-    })
-})
-export class SkiptoCommand extends Command {
-    async run(ctx) {
-        const queue = musicManager.getQueue(ctx.guildId);
-        
-        if (!queue || queue.songs.length < 2) {
-            return ctx.write({ content: 'There are no songs to skip to.', flags: 64 });
-        }
-        const voiceChannelId = await verifyVoiceConnection(ctx, queue, false);
-        if (!voiceChannelId) return;
-        
-        const position = ctx.options.position;
-        if (position > queue.songs.length) {
-            return ctx.write({ content: `Invalid position. Queue only has ${queue.songs.length} songs.`, flags: 64 });
-        }
-        
-        const targetSong = queue.songs[position];
-        musicManager.jump(ctx.guildId, position);
-        
-        await ctx.write({ content: `⏭️ Skipped to **${targetSong.title}**.` });
-    }
-}
+@Options(indexOption)
+export class SkiptoCommand extends JumpCommand {}

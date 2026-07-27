@@ -1,12 +1,12 @@
-import { Command, Declare, Embed } from 'seyfert';
+import { Command, SubCommand, Declare, Options, Embed } from 'seyfert';
 import { dbManager } from '../services/DatabaseManager.js';
 import { musicManager } from '../services/MusicManager.js';
 
 @Declare({
-    name: 'like',
+    name: 'add',
     description: 'Save the currently playing song to your personal favorites'
 })
-export class LikeCommand extends Command {
+export class FavoriteAddSubCommand extends SubCommand {
     async run(ctx) {
         const queue = musicManager.getQueue(ctx.guildId);
         
@@ -15,7 +15,7 @@ export class LikeCommand extends Command {
         }
         
         const song = queue.songs[0];
-        const added = await dbManager.addFavorite(ctx.member.id, song.url, song.title, song.duration);
+        const added = await dbManager.addFavorite(ctx.member.id, song.url || song.originalUrl, song.title, song.duration);
         
         if (added) {
             await ctx.write({ content: `❤️ Added **${song.title}** to your favorites!` });
@@ -26,15 +26,15 @@ export class LikeCommand extends Command {
 }
 
 @Declare({
-    name: 'favorites',
+    name: 'list',
     description: 'View your saved favorite songs'
 })
-export class FavoritesCommand extends Command {
+export class FavoriteListSubCommand extends SubCommand {
     async run(ctx) {
         const favorites = await dbManager.getFavorites(ctx.member.id);
         
         if (!favorites || favorites.length === 0) {
-            return ctx.write({ content: 'You have no saved favorites yet! Use `/like` when a song is playing.', flags: 64 });
+            return ctx.write({ content: 'You have no saved favorites yet! Use `/favorite add` or `/like` when a song is playing.', flags: 64 });
         }
         
         const embed = new Embed()
@@ -51,8 +51,23 @@ export class FavoritesCommand extends Command {
         }
         
         embed.setDescription(description);
-        embed.setFooter({ text: 'To play them, you can queue them up directly!' }); // Will add /play favorites logic later if needed
+        embed.setFooter({ text: 'To play them, queue them up with /play!' });
         
         await ctx.write({ embeds: [embed] });
     }
 }
+
+// Parent Slash Command: /favorite <add|list>
+@Declare({
+    name: 'favorite',
+    description: 'Manage your favorite songs'
+})
+@Options([FavoriteAddSubCommand, FavoriteListSubCommand])
+export class FavoriteCommand extends Command {}
+
+// Shorthand Slash Command Aliases (/like & /favorites)
+@Declare({ name: 'like', description: 'Alias for /favorite add' })
+export class LikeCommand extends FavoriteAddSubCommand {}
+
+@Declare({ name: 'favorites', description: 'Alias for /favorite list' })
+export class FavoritesCommand extends FavoriteListSubCommand {}
