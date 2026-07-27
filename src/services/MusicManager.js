@@ -1115,7 +1115,8 @@ export class MusicManager {
 
                 if (code === 0) {
                     try {
-                        if (fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1024) {
+                        const stats = await fsPromises.stat(tempFilePath).catch(() => null);
+                        if (stats && stats.size > 1024) {
                             // Only now mark the file as ready for consumption
                             nextSong.prefetchFilePath = tempFilePath;
                             
@@ -1140,7 +1141,7 @@ export class MusicManager {
                                 logger.debug('Prefetch', `Could not parse yt-dlp metadata for ${nextSong.title}`);
                             }
 
-                            const sizeMB = (fs.statSync(tempFilePath).size / (1024 * 1024)).toFixed(1);
+                            const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
                             logger.info('Prefetch', `Ready: ${nextSong.title} (${sizeMB} MB)`);
                         } else {
                             // File missing or too small despite exit code 0
@@ -1291,9 +1292,10 @@ export class MusicManager {
                     };
 
                     // 30s timeout — fails fast if yt-dlp hangs, allowing instant fallback
-                    const timeout = setTimeout(() => {
+                    const timeout = setTimeout(async () => {
                         try {
-                            if (fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1024) {
+                            const stats = await fsPromises.stat(tempFilePath).catch(() => null);
+                            if (stats && stats.size > 1024) {
                                 settle(resolve);
                                 return;
                             }
@@ -1301,9 +1303,10 @@ export class MusicManager {
                         settle(reject, new Error(`yt-dlp download timed out — file was never created for: ${song.title}`));
                     }, 30000);
 
-                    const onExit = (code) => {
+                    const onExit = async (code) => {
                         try {
-                            if (fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1024) {
+                            const stats = await fsPromises.stat(tempFilePath).catch(() => null);
+                            if (stats && stats.size > 1024) {
                                 settle(resolve);
                                 return;
                             }

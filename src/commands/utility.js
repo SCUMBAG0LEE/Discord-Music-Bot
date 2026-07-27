@@ -36,10 +36,19 @@ export class PingCommand extends Command {
         if (process.env.YOUTUBE_PROXY) {
             const proxyStart = Date.now();
             try {
-                // Test connection to YouTube via the custom proxy (HEAD request, 3s timeout)
-                await execFileAsync('curl', ['-s', '-I', '-x', process.env.YOUTUBE_PROXY, 'https://www.youtube.com', '--connect-timeout', '3'], { timeout: 4000 });
-                const proxyLatency = Date.now() - proxyStart;
-                proxyStatus = `🟢 ${proxyLatency}ms`;
+                try {
+                    await fetch('https://www.youtube.com', { 
+                        method: 'HEAD', 
+                        signal: AbortSignal.timeout(2500),
+                        proxy: process.env.YOUTUBE_PROXY 
+                    });
+                    const proxyLatency = Date.now() - proxyStart;
+                    proxyStatus = `🟢 ${proxyLatency}ms`;
+                } catch (fetchErr) {
+                    await execFileAsync('curl', ['-s', '-I', '-x', process.env.YOUTUBE_PROXY, 'https://www.youtube.com', '--connect-timeout', '2'], { timeout: 2500 });
+                    const proxyLatency = Date.now() - proxyStart;
+                    proxyStatus = `🟢 ${proxyLatency}ms`;
+                }
             } catch(e) {
                 proxyStatus = "🔴 Connection Failed (Offline/Invalid)";
             }

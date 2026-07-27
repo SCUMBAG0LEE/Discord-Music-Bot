@@ -2,6 +2,8 @@ import { Command, Declare, Options, Embed, createStringOption, createBooleanOpti
 import fs from 'fs';
 import os from 'os';
 import child_process from 'child_process';
+import util from 'util';
+const execAsync = util.promisify(child_process.exec);
 import { musicManager, ffmpegInfo, hardwareOptimization } from '../services/MusicManager.js';
 import { isOwner, ownerOnlyError } from '../utils/permissions.js';
 
@@ -280,6 +282,116 @@ export class ShutdownCommand extends Command {
     }
 }
 
+// In-Memory Cache for Static Hardware Specs & Network IPs
+let systemInfoStaticCache = null;
+let networkIpCache = null;
+let networkIpCacheTime = 0;
+
+async function getStaticSystemSpecs() {
+    if (systemInfoStaticCache) return systemInfoStaticCache;
+
+    const cpus = os.cpus();
+    let cpuModel = cpus[0]?.model?.trim();
+    if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
+        try {
+            if (fs.existsSync('/proc/cpuinfo')) {
+                const cpuInfo = await fs.promises.readFile('/proc/cpuinfo', 'utf8');
+                const match = cpuInfo.match(/model name\s*:\s*(.+)/i) || cpuInfo.match(/Hardware\s*:\s*(.+)/i);
+                if (match && match[1]) cpuModel = match[1].trim();
+            }
+        } catch (e) {}
+    }
+    if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
+        try {
+            if (os.type() === 'Linux') {
+                const { stdout: lscpuOut } = await execAsync('lscpu', { timeout: 1000 });
+                const match = lscpuOut.match(/Model name:\s*(.+)/i);
+                if (match && match[1]) cpuModel = match[1].trim();
+            }
+        } catch (e) {}
+    }
+    if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
+        cpuModel = `${os.arch().toUpperCase()} Processor`;
+    }
+
+    const coreCount = cpus.length;
+    const totalMem = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
+
+    let osName = os.type();
+    let kernelVersion = `${os.type()} ${os.release()}`;
+    if (os.type() === 'Windows_NT') {
+        osName = 'Windows';
+        kernelVersion = `NT ${os.release()}`;
+        const buildNum = parseInt(os.release().split('.')[2] || '0', 10);
+        if (buildNum >= 22000) osName = 'Windows 11 / Server 2022+';
+        else if (buildNum >= 10240) osName = 'Windows 10 / Server 2016+';
+        else if (buildNum >= 9600) osName = 'Windows 8.1 / Server 2012 R2';
+        else if (buildNum >= 9200) osName = 'Windows 8 / Server 2012';
+        else if (buildNum >= 7600) osName = 'Windows 7 / Server 2008 R2';
+        else osName = 'Windows Legacy';
+    } else if (os.type() === 'Darwin') {
+        osName = 'macOS';
+        kernelVersion = `Darwin ${os.release()}`;
+        try {
+            if (fs.existsSync('/System/Library/CoreServices/SystemVersion.plist')) {
+                const plist = await fs.promises.readFile('/System/Library/CoreServices/SystemVersion.plist', 'utf8');
+                const match = plist.match(/<key>ProductVersion<\/key>\s*<string>([^<]+)<\/string>/i);
+                if (match && match[1]) osName = `macOS ${match[1].trim()}`;
+            }
+        } catch (e) {}
+    } else if (os.type() === 'Linux') {
+        osName = 'Linux';
+        kernelVersion = `Linux ${os.release()}`;
+        try {
+            const osReleasePath = fs.existsSync('/etc/os-release') 
+                ? '/etc/os-release' 
+                : (fs.existsSync('/usr/lib/os-release') ? '/usr/lib/os-release' : null);
+            if (osReleasePath) {
+                const releaseContent = await fs.promises.readFile(osReleasePath, 'utf8');
+                const prettyMatch = releaseContent.match(/^PRETTY_NAME=["']?([^"\n\r]+)["']?/m);
+                const nameMatch = releaseContent.match(/^NAME=["']?([^"\n\r]+)["']?/m);
+                const matchedName = prettyMatch ? prettyMatch[1] : (nameMatch ? nameMatch[1] : null);
+                if (matchedName) osName = matchedName.replace(/["']/g, '').trim();
+            }
+        } catch (e) {}
+    }
+
+    let osUsername = 'Unknown';
+    try {
+        const info = os.userInfo();
+        if (info && info.username) osUsername = info.username;
+    } catch (e) {
+        osUsername = process.env.USER || process.env.USERNAME || 'Unknown';
+    }
+
+    let ytdlpVersion = 'Unknown';
+    const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+    try {
+        const { stdout: out } = await execAsync(`"${ytdlpPath}" --version`, { timeout: 1000 });
+        if (out) ytdlpVersion = out.trim();
+    } catch (e) {}
+
+    const userAgentStr = process.env.YOUTUBE_USER_AGENT || 'Default yt-dlp User-Agent';
+    const poTokenStr = process.env.YOUTUBE_PO_TOKEN 
+        ? `Active (${process.env.YOUTUBE_PO_TOKEN.substring(0, 15)}...)` 
+        : 'Plugin / Auto-Generator Active';
+
+    systemInfoStaticCache = {
+        cpuModel,
+        coreCount,
+        totalMem,
+        osName,
+        kernelVersion,
+        osUsername,
+        ytdlpVersion,
+        ytdlpPath,
+        userAgentStr,
+        poTokenStr
+    };
+
+    return systemInfoStaticCache;
+}
+
 // 7. System Info Command
 @Declare({
     name: 'systeminfo',
@@ -289,7 +401,12 @@ export class SystemInfoCommand extends Command {
     async run(ctx) {
         if (!isOwner(ctx.member.id)) return ownerOnlyError(ctx);
 
+        // Fetch static specs from cache (0ms)
+        const staticSpecs = await getStaticSystemSpecs();
+
         const used = process.memoryUsage();
+        const freeMem = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
+        
         const formatUptimeSec = (sec) => {
             const s = Math.floor(sec);
             const d = Math.floor(s / 86400);
@@ -314,29 +431,51 @@ export class SystemInfoCommand extends Command {
             if (guilds) guildCount = guilds.length;
         } catch (e) {}
 
-        let voiceCipher = 'sodium-native (aead_xchacha20_poly1305)';
-        try {
-            if (typeof Bun !== 'undefined') {
-                // Bun supports native sodium or fallback
-                voiceCipher = 'sodium-native / davey (UDP AEAD)';
+        // Network IP Diagnostics with 5-minute TTL cache
+        const now = Date.now();
+        if (!networkIpCache || (now - networkIpCacheTime) > 5 * 60 * 1000) {
+            let ipv4 = 'Fetch Failed';
+            let ipv6 = 'N/A (No IPv6 route)';
+            try {
+                const res4 = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(2500) });
+                ipv4 = (await res4.text()).trim().substring(0, 45);
+            } catch (e) {}
+
+            try {
+                const res6 = await fetch('https://api6.ipify.org', { signal: AbortSignal.timeout(2500) });
+                const text6 = (await res6.text()).trim().substring(0, 45);
+                if (text6 && text6 !== ipv4) ipv6 = text6;
+            } catch (e) {}
+
+            const rawProxy = process.env.YOUTUBE_PROXY || '';
+            const proxyStr = rawProxy 
+                ? (rawProxy.length > 50 ? `${rawProxy.substring(0, 50)}...` : rawProxy) 
+                : 'Direct Connection (No Proxy)';
+
+            let proxyOutboundIpv4 = 'N/A';
+            let proxyOutboundIpv6 = 'N/A (No IPv6 route)';
+            if (rawProxy) {
+                try {
+                    const { stdout: out4 } = await execAsync(`curl -s -m 3 --proxy "${rawProxy}" https://api.ipify.org`, { timeout: 3000 });
+                    if (out4) proxyOutboundIpv4 = out4.trim().substring(0, 45);
+                } catch (e) {}
+
+                try {
+                    const { stdout: out6 } = await execAsync(`curl -s -m 3 --proxy "${rawProxy}" https://api6.ipify.org`, { timeout: 3000 });
+                    if (out6) {
+                        const clean6 = out6.trim().substring(0, 45);
+                        if (clean6 !== proxyOutboundIpv4) proxyOutboundIpv6 = clean6;
+                    }
+                } catch (e) {}
             }
-        } catch (e) {}
 
-        // Network diagnostics: IPv4 & IPv6
-        let ipv4 = 'Fetch Failed';
-        let ipv6 = 'N/A (No IPv6 route)';
-        try {
-            const res4 = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(2500) });
-            ipv4 = (await res4.text()).trim().substring(0, 45);
-        } catch (e) {}
+            networkIpCache = { ipv4, ipv6, rawProxy, proxyStr, proxyOutboundIpv4, proxyOutboundIpv6 };
+            networkIpCacheTime = now;
+        }
 
-        try {
-            const res6 = await fetch('https://api6.ipify.org', { signal: AbortSignal.timeout(2500) });
-            const text6 = (await res6.text()).trim().substring(0, 45);
-            if (text6 && text6 !== ipv4) ipv6 = text6;
-        } catch (e) {}
+        const { ipv4, ipv6, rawProxy, proxyStr, proxyOutboundIpv4, proxyOutboundIpv6 } = networkIpCache;
 
-        // Cookie diagnostics
+        // Cookie diagnostics (inspected live so new cookie files show up immediately)
         let cookieStatus = 'Not Loaded';
         try {
             if (process.env.YOUTUBE_COOKIES) {
@@ -345,147 +484,20 @@ export class SystemInfoCommand extends Command {
                 const lenKb = (Buffer.byteLength(val, 'utf8') / 1024).toFixed(1);
                 cookieStatus = `Loaded from ENV (${lenKb} KB | ${isB64 ? 'Base64 Encoded' : 'Raw Text'})`;
             } else if (fs.existsSync('./youtube-cookies.txt')) {
-                const stats = fs.statSync('./youtube-cookies.txt');
+                const stats = await fs.promises.stat('./youtube-cookies.txt');
                 cookieStatus = `./youtube-cookies.txt (${(stats.size / 1024).toFixed(1)} KB | Netscape)`;
             } else if (fs.existsSync('./cookies.txt')) {
-                const stats = fs.statSync('./cookies.txt');
+                const stats = await fs.promises.stat('./cookies.txt');
                 cookieStatus = `./cookies.txt (${(stats.size / 1024).toFixed(1)} KB | Netscape)`;
             } else if (fs.existsSync('./youtube-cookies.json')) {
-                const stats = fs.statSync('./youtube-cookies.json');
+                const stats = await fs.promises.stat('./youtube-cookies.json');
                 cookieStatus = `./youtube-cookies.json (${(stats.size / 1024).toFixed(1)} KB | JSON Auto-Convert)`;
             } else if (fs.existsSync('./cookies.json')) {
-                const stats = fs.statSync('./cookies.json');
+                const stats = await fs.promises.stat('./cookies.json');
                 cookieStatus = `./cookies.json (${(stats.size / 1024).toFixed(1)} KB | JSON Auto-Convert)`;
             }
         } catch (e) {
             cookieStatus = 'Error Inspecting Cookie File';
-        }
-
-        // User-Agent diagnostics
-        const userAgentStr = process.env.YOUTUBE_USER_AGENT || 'Default yt-dlp User-Agent';
-
-        // PoToken diagnostics
-        const poTokenStr = process.env.YOUTUBE_PO_TOKEN 
-            ? `Active (${process.env.YOUTUBE_PO_TOKEN.substring(0, 15)}...)` 
-            : 'Plugin / Auto-Generator Active';
-
-        // Proxy diagnostics
-        const rawProxy = process.env.YOUTUBE_PROXY || '';
-        const proxyStr = rawProxy 
-            ? (rawProxy.length > 50 ? `${rawProxy.substring(0, 50)}...` : rawProxy) 
-            : 'Direct Connection (No Proxy)';
-
-        // Proxy Outbound IP resolution (what YouTube actually sees)
-        let proxyOutboundIpv4 = 'N/A';
-        let proxyOutboundIpv6 = 'N/A (No IPv6 route)';
-        if (rawProxy) {
-            try {
-                const out4 = child_process.execSync(`curl -s -m 3 --proxy "${rawProxy}" https://api.ipify.org`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 3000 }).trim();
-                if (out4) proxyOutboundIpv4 = out4.substring(0, 45);
-            } catch (e) {}
-
-            try {
-                const out6 = child_process.execSync(`curl -s -m 3 --proxy "${rawProxy}" https://api6.ipify.org`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 3000 }).trim();
-                if (out6 && out6 !== proxyOutboundIpv4) proxyOutboundIpv6 = out6.substring(0, 45);
-            } catch (e) {}
-        }
-
-        const cpus = os.cpus();
-        let cpuModel = cpus[0]?.model?.trim();
-        if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
-            try {
-                if (fs.existsSync('/proc/cpuinfo')) {
-                    const cpuInfo = fs.readFileSync('/proc/cpuinfo', 'utf8');
-                    const match = cpuInfo.match(/model name\s*:\s*(.+)/i) || cpuInfo.match(/Hardware\s*:\s*(.+)/i);
-                    if (match && match[1]) {
-                        cpuModel = match[1].trim();
-                    }
-                }
-            } catch (e) {}
-        }
-        if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
-            try {
-                if (os.type() === 'Linux') {
-                    const lscpuOut = child_process.execSync('lscpu', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 1000 });
-                    const match = lscpuOut.match(/Model name:\s*(.+)/i);
-                    if (match && match[1]) {
-                        cpuModel = match[1].trim();
-                    }
-                }
-            } catch (e) {}
-        }
-        if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
-            cpuModel = `${os.arch().toUpperCase()} Processor`;
-        }
-
-        const coreCount = cpus.length;
-        const totalMem = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
-        const freeMem = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
-        let osName = os.type();
-        let kernelVersion = `${os.type()} ${os.release()}`;
-
-        if (os.type() === 'Windows_NT') {
-            osName = 'Windows';
-            kernelVersion = `NT ${os.release()}`;
-            const buildNum = parseInt(os.release().split('.')[2] || '0', 10);
-            if (buildNum >= 22000) {
-                osName = 'Windows 11 / Server 2022+';
-            } else if (buildNum >= 10240) {
-                osName = 'Windows 10 / Server 2016+';
-            } else if (buildNum >= 9600) {
-                osName = 'Windows 8.1 / Server 2012 R2';
-            } else if (buildNum >= 9200) {
-                osName = 'Windows 8 / Server 2012';
-            } else if (buildNum >= 7600) {
-                osName = 'Windows 7 / Server 2008 R2';
-            } else {
-                osName = 'Windows Legacy';
-            }
-        } else if (os.type() === 'Darwin') {
-            osName = 'macOS';
-            kernelVersion = `Darwin ${os.release()}`;
-            try {
-                if (fs.existsSync('/System/Library/CoreServices/SystemVersion.plist')) {
-                    const plist = fs.readFileSync('/System/Library/CoreServices/SystemVersion.plist', 'utf8');
-                    const match = plist.match(/<key>ProductVersion<\/key>\s*<string>([^<]+)<\/string>/i);
-                    if (match && match[1]) {
-                        osName = `macOS ${match[1].trim()}`;
-                    }
-                }
-            } catch (e) {}
-        } else if (os.type() === 'Linux') {
-            osName = 'Linux';
-            kernelVersion = `Linux ${os.release()}`;
-            try {
-                const osReleasePath = fs.existsSync('/etc/os-release') 
-                    ? '/etc/os-release' 
-                    : (fs.existsSync('/usr/lib/os-release') ? '/usr/lib/os-release' : null);
-                    
-                if (osReleasePath) {
-                    const releaseContent = fs.readFileSync(osReleasePath, 'utf8');
-                    const prettyMatch = releaseContent.match(/^PRETTY_NAME=["']?([^"\n\r]+)["']?/m);
-                    const nameMatch = releaseContent.match(/^NAME=["']?([^"\n\r]+)["']?/m);
-                    const matchedName = prettyMatch ? prettyMatch[1] : (nameMatch ? nameMatch[1] : null);
-                    if (matchedName) {
-                        osName = matchedName.replace(/["']/g, '').trim();
-                    }
-                }
-            } catch (e) {}
-        }
-
-        let ytdlpVersion = 'Unknown';
-        const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-        try {
-            const out = child_process.execSync(`"${ytdlpPath}" --version 2>/dev/null`, { encoding: 'utf8', timeout: 1000 });
-            if (out) ytdlpVersion = out.trim();
-        } catch (e) {}
-
-        let osUsername = 'Unknown';
-        try {
-            const info = os.userInfo();
-            if (info && info.username) osUsername = info.username;
-        } catch (e) {
-            osUsername = process.env.USER || process.env.USERNAME || 'Unknown';
         }
 
         let runtimeStr = `Node.js v${process.versions?.node || process.version}`;
@@ -505,7 +517,7 @@ export class SystemInfoCommand extends Command {
             .addFields([
                 { 
                     name: '🤖 Bot & Process', 
-                    value: `> **Guilds:** \`${guildCount}\`\n> **Active Streams:** \`${activeQueues}\` (${totalQueuedTracks} queued)\n> **Bot Uptime:** \`${botUptimeStr}\`\n> **PID:** \`${process.pid}\`\n> **OS User:** \`${osUsername}\`\n> **Runtime:** \`${runtimeStr}\``, 
+                    value: `> **Guilds:** \`${guildCount}\`\n> **Active Streams:** \`${activeQueues}\` (${totalQueuedTracks} queued)\n> **Bot Uptime:** \`${botUptimeStr}\`\n> **PID:** \`${process.pid}\`\n> **OS User:** \`${staticSpecs.osUsername}\`\n> **Runtime:** \`${runtimeStr}\``, 
                     inline: true 
                 },
                 { 
@@ -520,7 +532,7 @@ export class SystemInfoCommand extends Command {
                 },
                 { 
                     name: '🎵 Music Engine Binaries', 
-                    value: `> **FFmpeg:** \`v${ffmpegInfo.version}\` (${ffmpegInfo.type})\n> **FFmpeg Path:** \`${ffmpegInfo.path}\`\n> **yt-dlp:** \`v${ytdlpVersion}\`\n> **yt-dlp Path:** \`${ytdlpPath}\``, 
+                    value: `> **FFmpeg:** \`v${ffmpegInfo.version}\` (${ffmpegInfo.type})\n> **FFmpeg Path:** \`${ffmpegInfo.path}\`\n> **yt-dlp:** \`v${staticSpecs.ytdlpVersion}\`\n> **yt-dlp Path:** \`${staticSpecs.ytdlpPath}\``, 
                     inline: false 
                 },
                 { 
@@ -532,17 +544,17 @@ export class SystemInfoCommand extends Command {
                 },
                 { 
                     name: '🔑 YouTube Bypass Configuration', 
-                    value: `> **Cookies:** \`${cookieStatus}\`\n> **User-Agent:** \`${userAgentStr}\`\n> **PoToken:** \`${poTokenStr}\``, 
+                    value: `> **Cookies:** \`${cookieStatus}\`\n> **User-Agent:** \`${staticSpecs.userAgentStr}\`\n> **PoToken:** \`${staticSpecs.poTokenStr}\``, 
                     inline: false 
                 },
                 { 
                     name: '🖥️ Hardware Specs', 
-                    value: `> **CPU:** \`${cpuModel}\`\n> **Cores:** \`${coreCount}\`\n> **RAM:** \`${freeMem} GB free / ${totalMem} GB total\``, 
+                    value: `> **CPU:** \`${staticSpecs.cpuModel}\`\n> **Cores:** \`${staticSpecs.coreCount}\`\n> **RAM:** \`${freeMem} GB free / ${staticSpecs.totalMem} GB total\``, 
                     inline: false 
                 },
                 { 
                     name: '🐧 Platform & Kernel', 
-                    value: `> **OS:** \`${osName} (${os.arch()})\`\n> **Kernel:** \`${kernelVersion}\`\n> **Host Server Uptime:** \`${serverUptimeStr}\``, 
+                    value: `> **OS:** \`${staticSpecs.osName} (${os.arch()})\`\n> **Kernel:** \`${staticSpecs.kernelVersion}\`\n> **Host Server Uptime:** \`${serverUptimeStr}\``, 
                     inline: false 
                 }
             ])
