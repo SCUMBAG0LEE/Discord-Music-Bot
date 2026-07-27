@@ -1,5 +1,7 @@
 import { Command, Declare, Options, Embed, createStringOption, createBooleanOption, createAttachmentOption } from 'seyfert';
+import fs from 'fs';
 import os from 'os';
+import child_process from 'child_process';
 import { musicManager } from '../services/MusicManager.js';
 import { isOwner, ownerOnlyError } from '../utils/permissions.js';
 
@@ -325,6 +327,17 @@ export class SystemInfoCommand extends Command {
             } catch (e) {}
         }
         if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
+            try {
+                if (os.type() === 'Linux') {
+                    const lscpuOut = child_process.execSync('lscpu 2>/dev/null', { encoding: 'utf8', timeout: 1000 });
+                    const match = lscpuOut.match(/Model name:\s*(.+)/i);
+                    if (match && match[1]) {
+                        cpuModel = match[1].trim();
+                    }
+                }
+            } catch (e) {}
+        }
+        if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
             cpuModel = `${os.arch().toUpperCase()} Processor`;
         }
 
@@ -339,9 +352,17 @@ export class SystemInfoCommand extends Command {
             kernelVersion = `NT ${os.release()}`;
             const buildNum = parseInt(os.release().split('.')[2] || '0', 10);
             if (buildNum >= 22000) {
-                osName = 'Windows 11';
+                osName = 'Windows 11 / Server 2022+';
             } else if (buildNum >= 10240) {
                 osName = 'Windows 10 / Server 2016+';
+            } else if (buildNum >= 9600) {
+                osName = 'Windows 8.1 / Server 2012 R2';
+            } else if (buildNum >= 9200) {
+                osName = 'Windows 8 / Server 2012';
+            } else if (buildNum >= 7600) {
+                osName = 'Windows 7 / Server 2008 R2';
+            } else {
+                osName = 'Windows Legacy';
             }
         } else if (os.type() === 'Darwin') {
             osName = 'macOS';
@@ -359,14 +380,17 @@ export class SystemInfoCommand extends Command {
             osName = 'Linux';
             kernelVersion = `Linux ${os.release()}`;
             try {
-                if (fs.existsSync('/etc/os-release')) {
-                    const releaseContent = fs.readFileSync('/etc/os-release', 'utf8');
-                    const lines = releaseContent.split('\n');
-                    const prettyLine = lines.find(l => l.startsWith('PRETTY_NAME='));
-                    const nameLine = lines.find(l => l.startsWith('NAME='));
-                    const targetLine = prettyLine || nameLine;
-                    if (targetLine) {
-                        osName = targetLine.split('=')[1].replace(/"/g, '').trim();
+                const osReleasePath = fs.existsSync('/etc/os-release') 
+                    ? '/etc/os-release' 
+                    : (fs.existsSync('/usr/lib/os-release') ? '/usr/lib/os-release' : null);
+                    
+                if (osReleasePath) {
+                    const releaseContent = fs.readFileSync(osReleasePath, 'utf8');
+                    const prettyMatch = releaseContent.match(/^PRETTY_NAME=["']?([^"\n\r]+)["']?/m);
+                    const nameMatch = releaseContent.match(/^NAME=["']?([^"\n\r]+)["']?/m);
+                    const matchedName = prettyMatch ? prettyMatch[1] : (nameMatch ? nameMatch[1] : null);
+                    if (matchedName) {
+                        osName = matchedName.replace(/["']/g, '').trim();
                     }
                 }
             } catch (e) {}
