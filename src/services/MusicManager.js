@@ -664,11 +664,12 @@ export class MusicManager {
     async sendMessage(queue, options) {
         try {
             if (queue.client && queue.textChannelId) {
-                await queue.client.messages.write(queue.textChannelId, options);
+                return await queue.client.messages.write(queue.textChannelId, options);
             }
         } catch (e) {
             logger.error('MusicManager', 'Failed to send message', e);
         }
+        return null;
     }
 
     updateStatus(songTitle) {
@@ -1338,13 +1339,11 @@ export class MusicManager {
                     }
                 });
 
-                // Determine if the source is already in a native Opus/Ogg container (format .opus or .ogg) — if so, we can just
-                // remux the container with zero CPU cost. For WebM format 251, transcode to 48kHz Stereo Opus to avoid packet header errors.
+                // Determine if the source is already Opus 48kHz stereo (format 251 on YouTube) — if so, we perform a zero-cost container remux (-c:a copy) at ~0% CPU.
                 const sourceCodec = song._ytDlpData?.acodec || '';
                 const sampleRate = song._ytDlpData?.asr || 48000;
                 const channels = song._ytDlpData?.audio_channels || 2;
-                const ext = (song._ytDlpData?.ext || '').toLowerCase();
-                const isAlreadyOpus = (ext === 'opus' || ext === 'ogg') && sourceCodec === 'opus' && sampleRate === 48000 && channels === 2;
+                const isAlreadyOpus = (sourceCodec === 'opus' || song._ytDlpData?.format_id === '251') && sampleRate === 48000 && channels === 2;
 
                 if (!song._ytDlpData) song._ytDlpData = {};
                 song._ytDlpData._transportMode = song.prefetchFilePath 
@@ -1352,11 +1351,12 @@ export class MusicManager {
                     : 'yt-dlp Download-to-Disk';
 
                 if (isAlreadyOpus) {
-                    // Zero-cost codec copy for native .opus / .ogg containers
+                    // Zero-cost codec copy: remux WebM/Opus → OggOpus container for Discord at ~0% CPU
                     logger.debug('MusicManager', `Opus passthrough (remux only) for: ${song.title}`);
                     song._ytDlpData._processingMode = 'Opus Passthrough (-c:a copy)';
                     ffmpegArgs = [
                         '-hide_banner',
+                        '-err_detect', 'ignore_err',
                         '-i', tempFilePath,
                         '-loglevel', 'warning',
                         '-vn',
@@ -1437,14 +1437,12 @@ export class MusicManager {
             queue.resource = resource;
 
             queue.player.play(resource);
-             // Clean up button controls on previous Now Playing message to keep chat tidy
-            if (queue.lastNowPlayingMessage) {
+            // Clean up button controls on previous Now Playing message to keep chat tidy
+            if (queue.lastNowPlayingMessageId && queue.textChannelId && queue.client) {
                 try {
-                    if (typeof queue.lastNowPlayingMessage.edit === 'function') {
-                        await queue.lastNowPlayingMessage.edit({ components: [] });
-                    }
+                    await queue.client.messages.edit(queue.textChannelId, queue.lastNowPlayingMessageId, { components: [] });
                 } catch (e) { /* message deleted or unreachable */ }
-                queue.lastNowPlayingMessage = null;
+                queue.lastNowPlayingMessageId = null;
             }
 
             const settings = await loadSettings(guildId);
@@ -1459,7 +1457,9 @@ export class MusicManager {
                     embeds: [embed],
                     components: [getPlayerControls(queue)]
                 });
-                if (sentMsg) queue.lastNowPlayingMessage = sentMsg;
+                if (sentMsg && sentMsg.id) {
+                    queue.lastNowPlayingMessageId = sentMsg.id;
+                }
             }
             this.updateStatus(song.title);
             
@@ -1532,13 +1532,11 @@ export class MusicManager {
 
     async handleQueueEnd(guildId, queue) {
         queue.playing = false;
-        if (queue.lastNowPlayingMessage) {
+        if (queue.lastNowPlayingMessageId && queue.textChannelId && queue.client) {
             try {
-                if (typeof queue.lastNowPlayingMessage.edit === 'function') {
-                    await queue.lastNowPlayingMessage.edit({ components: [] });
-                }
+                await queue.client.messages.edit(queue.textChannelId, queue.lastNowPlayingMessageId, { components: [] });
             } catch (e) {}
-            queue.lastNowPlayingMessage = null;
+            queue.lastNowPlayingMessageId = null;
         }
         this.updateStatus(null);
         if (!queue.stay247) {
