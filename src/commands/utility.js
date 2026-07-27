@@ -159,12 +159,18 @@ export class DebugCommand extends Command {
             const currentSong = queue.songs[0];
             if (currentSong && currentSong._ytDlpData) {
                 const streamData = currentSong._ytDlpData;
+                const bitrateVal = streamData.abr || streamData.tbr;
+                const bitrateStr = bitrateVal ? `${typeof bitrateVal === 'number' ? bitrateVal.toFixed(1) : bitrateVal} kbps` : 'N/A';
+                const protocolStr = streamData.protocol ? streamData.protocol.toUpperCase() : (process.env.YOUTUBE_PROXY ? 'HTTPS/SOCKS5' : 'HTTPS');
+
                 debugInfo += `\n**Stream Info:**\n`;
-                debugInfo += `> **Codec:** \`${streamData.acodec || 'N/A'}\`\n`;
-                debugInfo += `> **Bitrate:** \`${streamData.abr ? `${streamData.abr.toFixed(2)} kbps` : 'N/A'}\`\n`;
+                debugInfo += `> **Engine Mode:** \`${streamData._processingMode || 'N/A'}\`\n`;
+                debugInfo += `> **Transport:** \`${streamData._transportMode || 'N/A'}\`\n`;
+                debugInfo += `> **Source Codec:** \`${streamData.acodec || 'N/A'}\`\n`;
+                debugInfo += `> **Bitrate:** \`${bitrateStr}\`\n`;
                 debugInfo += `> **Sample Rate:** \`${streamData.asr ? `${streamData.asr} Hz` : 'N/A'}\`\n`;
-                debugInfo += `> **Format:** \`${streamData.format_id || 'N/A'} (${streamData.ext || 'N/A'})\`\n`;
-                debugInfo += `> **Protocol:** \`${streamData.protocol || 'N/A'}\`\n`;
+                debugInfo += `> **Format ID:** \`${streamData.format_id || 'N/A'} (${streamData.ext || 'N/A'})\`\n`;
+                debugInfo += `> **Protocol:** \`${protocolStr}\`\n`;
             }
         } else {
             debugInfo += `**Voice Connection:** None\n`;

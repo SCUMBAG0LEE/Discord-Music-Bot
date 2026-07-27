@@ -34,7 +34,9 @@ export default class PlayerControls extends ComponentCommand {
                 break;
                 
             case 'player_skip':
-                musicManager.jump(ctx.guildId, 1);
+                if (queue.player) {
+                    queue.player.stop();
+                }
                 await ctx.interaction.update({ content: '⏭️ **Skipped.**', components: [] });
                 break;
                 

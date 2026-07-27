@@ -592,8 +592,19 @@ async function getTrackInfo(query, searchPrefix = '') {
                 durationInSec: data.duration,
                 durationRaw: data.duration ? `${Math.floor(data.duration / 60)}:${(data.duration % 60).toString().padStart(2, '0')}` : 'Live/Unknown',
                 sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other'),
-                // Keep only fields needed for streaming + codec detection (Opus passthrough)
-                _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url, acodec: data.acodec, format_id: data.format_id, asr: data.asr, audio_channels: data.audio_channels }
+                // Keep fields needed for streaming, codec detection (Opus passthrough), and /debug info
+                _ytDlpData: { 
+                    url: data.url, 
+                    extractor: data.extractor, 
+                    webpage_url: data.webpage_url, 
+                    acodec: data.acodec, 
+                    format_id: data.format_id, 
+                    asr: data.asr, 
+                    audio_channels: data.audio_channels,
+                    abr: data.abr || data.tbr,
+                    ext: data.ext,
+                    protocol: data.protocol
+                }
             };
         } catch (e) {
             lastError = e;
@@ -1115,11 +1126,14 @@ export class MusicManager {
                                 if (!nextSong._ytDlpData) {
                                     nextSong._ytDlpData = metadata;
                                 } else {
-                                    // Merge codec info without overwriting existing data
+                                    // Merge codec & stream info without overwriting existing data
                                     nextSong._ytDlpData.acodec = metadata.acodec || nextSong._ytDlpData.acodec;
                                     nextSong._ytDlpData.format_id = metadata.format_id || nextSong._ytDlpData.format_id;
                                     nextSong._ytDlpData.asr = metadata.asr || nextSong._ytDlpData.asr;
                                     nextSong._ytDlpData.audio_channels = metadata.audio_channels || nextSong._ytDlpData.audio_channels;
+                                    nextSong._ytDlpData.abr = metadata.abr || metadata.tbr || nextSong._ytDlpData.abr;
+                                    nextSong._ytDlpData.ext = metadata.ext || nextSong._ytDlpData.ext;
+                                    nextSong._ytDlpData.protocol = metadata.protocol || nextSong._ytDlpData.protocol;
                                 }
                             } catch (e) {
                                 // JSON parse failed — not critical, codec detection will fall back to transcode
@@ -1320,9 +1334,15 @@ export class MusicManager {
                 const channels = song._ytDlpData?.audio_channels || 2;
                 const isAlreadyOpus = (sourceCodec === 'opus' || song._ytDlpData?.format_id === '251') && sampleRate === 48000 && channels === 2;
 
+                if (!song._ytDlpData) song._ytDlpData = {};
+                song._ytDlpData._transportMode = song.prefetchFilePath 
+                    ? 'Prefetched (Local File)' 
+                    : (isSocksProxy ? 'yt-dlp Download (SOCKS Proxy)' : 'yt-dlp Download (Local Temp File)');
+
                 if (isAlreadyOpus) {
                     // Zero-cost codec copy: just remux WebM/Opus → OggOpus container for Discord
                     logger.debug('MusicManager', `Opus passthrough (remux only) for: ${song.title}`);
+                    song._ytDlpData._processingMode = 'Opus Passthrough (-c:a copy | 0% CPU)';
                     ffmpegArgs = [
                         '-hide_banner',
                         '-i', tempFilePath,
@@ -1333,7 +1353,9 @@ export class MusicManager {
                     ];
                 } else {
                     // Non-Opus or non-48kHz source (AAC, Vorbis, 44.1kHz, etc.) — transcode to 48kHz Stereo Opus for Discord
-                    logger.debug('MusicManager', `Transcoding ${sourceCodec || 'unknown'} (${sampleRate}Hz/${channels}ch) → 48kHz Stereo Opus for: ${song.title}`);
+                    const codecLabel = sourceCodec ? sourceCodec.toUpperCase() : 'Non-Opus Audio';
+                    logger.debug('MusicManager', `Transcoding ${codecLabel} (${sampleRate}Hz/${channels}ch) → 48kHz Stereo Opus for: ${song.title}`);
+                    song._ytDlpData._processingMode = `Transcode ${codecLabel} → Opus 128k 48kHz`;
                     ffmpegArgs = [
                         '-hide_banner',
                         '-threads', hardwareOptimization.threads,
@@ -1353,6 +1375,11 @@ export class MusicManager {
                     actualStreamUrl = song._ytDlpData.url;
                     logger.info('MusicManager', `Bypassing proxy download, streaming direct audio URL for: ${song.title}`);
                 }
+
+                const codecLabel = song._ytDlpData?.acodec ? song._ytDlpData.acodec.toUpperCase() : 'Stream';
+                if (!song._ytDlpData) song._ytDlpData = {};
+                song._ytDlpData._transportMode = 'Direct FFmpeg HTTP Stream';
+                song._ytDlpData._processingMode = `Transcode ${codecLabel} → Opus 128k 48kHz`;
 
                 // Direct streams cannot be prefetched to EOF (they are infinite or streaming)
                 ffmpegArgs = [

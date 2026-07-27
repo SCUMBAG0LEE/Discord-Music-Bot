@@ -33,9 +33,13 @@ export default class ForcePlayCommand extends Command {
         }
         
         try {
-            const channel = await ctx.client.cache.channels?.get(voiceChannelId);
+            let channel = await ctx.client.cache.channels?.get(voiceChannelId);
             if (!channel) {
-                return ctx.editOrReply({ content: '❌ Could not fetch your voice channel from the cache.' });
+                try {
+                    channel = await ctx.client.channels.fetch(voiceChannelId);
+                } catch (e) {
+                    channel = { id: voiceChannelId, guildId: ctx.guildId, client: ctx.client };
+                }
             }
             
             await musicManager.forcePlay(channel, query, ctx);
