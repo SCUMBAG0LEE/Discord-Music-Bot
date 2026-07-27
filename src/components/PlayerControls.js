@@ -22,6 +22,11 @@ export default class PlayerControls extends ComponentCommand {
             return ctx.editOrReply({ content: '❌ You must be in the same voice channel as the bot to use these controls.', flags: 64 });
         }
         
+        // Disable buttons on old Now Playing messages to prevent confusion
+        if (queue.lastNowPlayingMessageId && ctx.interaction.message.id !== queue.lastNowPlayingMessageId) {
+            return ctx.interaction.update({ components: [] });
+        }
+        
         switch (ctx.customId) {
             case 'player_pause':
                 if (queue.paused) {

@@ -659,6 +659,10 @@ export class MusicManager {
             fsPromises.unlink(song.prefetchFilePath).catch(err => logger.warn('Prefetch', `Failed to delete prefetch file ${song.prefetchFilePath}: ${err.message}`));
             song.prefetchFilePath = null;
         }
+        if (song._currentFilePath) {
+            fsPromises.unlink(song._currentFilePath).catch(() => {});
+            song._currentFilePath = null;
+        }
     }
 
     async sendMessage(queue, options) {
@@ -1091,6 +1095,7 @@ export class MusicManager {
         
         nextSong.isPrefetching = true;
         const tempFilePath = path.join(os.tmpdir(), `discord_music_prefetch_${guildId}_${Date.now()}.audio`);
+        nextSong.prefetchFilePath = tempFilePath; // Set immediately so playNext can find it if still running
         
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
@@ -1106,7 +1111,7 @@ export class MusicManager {
             ]);
             const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
             
-            // Store process reference for cleanup (leave/stop), but NOT the file path yet
+            // Store process reference for cleanup (leave/stop)
             nextSong.prefetchProcess = ytdlpChildProcess;
 
             // Capture stdout JSON metadata for codec detection (acodec, format_id)
@@ -1126,9 +1131,6 @@ export class MusicManager {
                     try {
                         const stats = await fsPromises.stat(tempFilePath).catch(() => null);
                         if (stats && stats.size > 1024) {
-                            // Only now mark the file as ready for consumption
-                            nextSong.prefetchFilePath = tempFilePath;
-                            
                             // Parse yt-dlp JSON to populate _ytDlpData (needed for Opus passthrough detection)
                             try {
                                 const jsonStr = Buffer.concat(stdoutChunks).toString();
@@ -1197,6 +1199,8 @@ export class MusicManager {
             return this.handleQueueEnd(guildId, queue);
         }
 
+        queue.playing = true;
+
         // Ensure we have full track metadata, especially for items from proxied playlists (Spotify, etc.)
         if (!song._ytDlpData && !song.isRadio && song.sourceType !== 'radio') {
             try {
@@ -1237,7 +1241,7 @@ export class MusicManager {
                 queue.ytdlpChildProcess.kill();
                 queue.ytdlpChildProcess = null;
             }
-            if (queue.tempFilePath && queue.tempFilePath !== song.prefetchFilePath) {
+            if (queue.tempFilePath && queue.tempFilePath !== song.prefetchFilePath && queue.tempFilePath !== song._currentFilePath) {
                 fsPromises.unlink(queue.tempFilePath).catch(() => {});
                 queue.tempFilePath = null;
             }
@@ -1256,16 +1260,28 @@ export class MusicManager {
                     delete song._ytDlpData.url;
                 }
                 // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
-                if (song.prefetchFilePath) {
+                if (song.prefetchFilePath && !song.isPrefetching) {
                     // Use the already background-prefetched file (HDD read optimization)
                     logger.info('Prefetch', `Using prefetched audio file for: ${song.title}`);
                     tempFilePath = song.prefetchFilePath;
                     queue.tempFilePath = tempFilePath;
                     queue.ytdlpChildProcess = song.prefetchProcess || null;
+                } else if (song.prefetchFilePath && song.isPrefetching && song.prefetchProcess) {
+                    // Wait for the in-progress prefetch to finish instead of spawning a new duplicate process
+                    logger.info('Prefetch', `Waiting for in-progress prefetch to finish for: ${song.title}`);
+                    tempFilePath = song.prefetchFilePath;
+                    queue.tempFilePath = tempFilePath;
+                    queue.ytdlpChildProcess = song.prefetchProcess;
+                } else if (song._currentFilePath) {
+                    // Reuse existing file if looping
+                    logger.info('Prefetch', `Reusing existing downloaded file for: ${song.title}`);
+                    tempFilePath = song._currentFilePath;
+                    queue.tempFilePath = tempFilePath;
                 } else {
                     const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
                     tempFilePath = path.join(os.tmpdir(), `discord_music_${guildId}_${Date.now()}.audio`);
                     queue.tempFilePath = tempFilePath;
+                    song._currentFilePath = tempFilePath;
                     
                     const ytdlpArgs = getYtDlpArgs([
                         '-f', '251/bestaudio/best',
@@ -1356,13 +1372,18 @@ export class MusicManager {
                     song._ytDlpData._processingMode = 'Opus Passthrough (-c:a copy)';
                     ffmpegArgs = [
                         '-hide_banner',
-                        '-err_detect', 'ignore_err',
+                        '-err_detect', 'ignore_err'
+                    ];
+                    if (queue.seekOffset > 0) {
+                        ffmpegArgs.push('-ss', queue.seekOffset.toString());
+                    }
+                    ffmpegArgs.push(
                         '-i', tempFilePath,
                         '-loglevel', 'warning',
                         '-vn',
                         '-c:a', 'copy',
                         '-f', 'opus'
-                    ];
+                    );
                 } else {
                     // Non-Opus or non-48kHz source (AAC, Vorbis, 44.1kHz, etc.) — transcode to 48kHz Stereo Opus for Discord
                     const codecLabel = sourceCodec ? sourceCodec.toUpperCase() : 'Non-Opus Audio';
@@ -1370,7 +1391,12 @@ export class MusicManager {
                     song._ytDlpData._processingMode = `Transcode ${codecLabel} → Opus 128k 48kHz`;
                     ffmpegArgs = [
                         '-hide_banner',
-                        '-threads', hardwareOptimization.threads,
+                        '-threads', hardwareOptimization.threads
+                    ];
+                    if (queue.seekOffset > 0) {
+                        ffmpegArgs.push('-ss', queue.seekOffset.toString());
+                    }
+                    ffmpegArgs.push(
                         '-i', tempFilePath,
                         '-loglevel', 'warning',
                         '-vn',
@@ -1379,7 +1405,7 @@ export class MusicManager {
                         '-ar', '48000',
                         '-ac', '2',
                         '-f', 'opus'
-                    ];
+                    );
                 }
             } else {
                 let actualStreamUrl = streamUrl;
@@ -1406,6 +1432,10 @@ export class MusicManager {
                     ffmpegArgs.push('-http_proxy', process.env.YOUTUBE_PROXY);
                 }
 
+                if (queue.seekOffset > 0) {
+                    ffmpegArgs.push('-ss', queue.seekOffset.toString());
+                }
+
                 ffmpegArgs.push(
                     '-i', actualStreamUrl,
                     '-loglevel', 'warning',
@@ -1417,6 +1447,8 @@ export class MusicManager {
                     '-f', 'opus'
                 );
             }
+
+            queue.seekOffset = 0; // reset after applying
 
             const ffmpegProcess = new prism.FFmpeg({ 
                 args: ffmpegArgs,
@@ -1740,6 +1772,14 @@ export class MusicManager {
                     for (const s of queue.songs) {
                         if (s.prefetchProcess) s.prefetchProcess.kill();
                         if (s.prefetchFilePath) fsPromises.unlink(s.prefetchFilePath).catch(() => {});
+                        if (s._currentFilePath) fsPromises.unlink(s._currentFilePath).catch(() => {});
+                    }
+                }
+                if (queue.history) {
+                    for (const s of queue.history) {
+                        if (s.prefetchProcess) s.prefetchProcess.kill();
+                        if (s.prefetchFilePath) fsPromises.unlink(s.prefetchFilePath).catch(() => {});
+                        if (s._currentFilePath) fsPromises.unlink(s._currentFilePath).catch(() => {});
                     }
                 }
             } catch (e) {}

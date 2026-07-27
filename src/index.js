@@ -59,9 +59,6 @@ client.start().then(async () => {
         logger.info('Bot', 'Skipping command upload (SKIP_COMMAND_UPLOAD=true)');
     }
 
-    // In-memory real-time voice state tracker: Map<guildId, Map<userId, channelId>>
-    const activeVoiceMembers = new Map();
-
     // Inject Raw Payload Interceptor for @discordjs/voice
     const originalHandlePayload = client.gateway.options.handlePayload;
     const wrapper = (shardId, packet) => {
@@ -71,18 +68,6 @@ client.start().then(async () => {
             const { guild_id, user_id, channel_id } = packet.d;
 
             // Track voice state in real time directly from gateway payload
-            if (guild_id && user_id) {
-                if (!activeVoiceMembers.has(guild_id)) {
-                    activeVoiceMembers.set(guild_id, new Map());
-                }
-                const guildMembers = activeVoiceMembers.get(guild_id);
-                if (channel_id) {
-                    guildMembers.set(user_id, channel_id);
-                } else {
-                    guildMembers.delete(user_id);
-                }
-            }
-            
             if (user_id === botId) {
                 if (adapter) adapter.onVoiceStateUpdate(packet.d);
                 const queue = musicManager.getQueue(guild_id);
@@ -102,49 +87,54 @@ client.start().then(async () => {
             if (user_id !== botId) {
                 const queue = musicManager.getQueue(guild_id);
                 if (queue && queue.voiceChannelId) {
-                    const guildMembers = activeVoiceMembers.get(guild_id);
-                    let currentMembersInVc = 0;
-                    if (guildMembers) {
-                        for (const [uId, cId] of guildMembers.entries()) {
-                            if (cId === queue.voiceChannelId && uId !== botId) {
-                                currentMembersInVc++;
-                            }
-                        }
-                    }
-
-                    if (currentMembersInVc > 0) {
-                        // Human members are present — cancel any pending disconnect timer immediately
-                        if (queue.emptyVcTimeout) {
-                            clearTimeout(queue.emptyVcTimeout);
-                            queue.emptyVcTimeout = null;
-                        }
-                    } else {
-                        // Voice channel is completely empty — start 15-second disconnect timer
-                        if (queue.emptyVcTimeout) {
-                            clearTimeout(queue.emptyVcTimeout);
-                        }
-
-                        queue.emptyVcTimeout = setTimeout(async () => {
-                            try {
-                                const latestGuildMembers = activeVoiceMembers.get(guild_id);
-                                let membersInVc = 0;
-                                if (latestGuildMembers) {
-                                    for (const [uId, cId] of latestGuildMembers.entries()) {
-                                        if (cId === queue.voiceChannelId && uId !== botId) {
-                                            membersInVc++;
-                                        }
+                    // Give Seyfert's internal cache 1000ms to update
+                    setTimeout(async () => {
+                        try {
+                            const voiceStates = await client.cache.voiceStates?.values(guild_id);
+                            let membersInVc = 0;
+                            if (voiceStates) {
+                                for (const state of voiceStates) {
+                                    if (state.channelId === queue.voiceChannelId && state.userId !== botId) {
+                                        membersInVc++;
                                     }
                                 }
-
-                                if (membersInVc === 0 && !queue.stay247) {
-                                    await musicManager.sendMessage(queue, { content: '👋 Everyone left the voice channel! Stopping music to save resources...' });
-                                    musicManager.leave(guild_id);
-                                }
-                            } catch (e) {
-                                logger.error('VoiceCheck', 'Alone Check Error', e);
                             }
-                        }, 15000); // 15-second buffer to allow channel switching and quick reconnects
-                    }
+
+                            if (membersInVc > 0) {
+                                // Human members are present — cancel any pending disconnect timer immediately
+                                if (queue.emptyVcTimeout) {
+                                    clearTimeout(queue.emptyVcTimeout);
+                                    queue.emptyVcTimeout = null;
+                                }
+                            } else {
+                                // Voice channel is completely empty — start 15-second disconnect timer
+                                if (queue.emptyVcTimeout) clearTimeout(queue.emptyVcTimeout);
+
+                                queue.emptyVcTimeout = setTimeout(async () => {
+                                    try {
+                                        const latestStates = await client.cache.voiceStates?.values(guild_id);
+                                        let stillEmpty = true;
+                                        if (latestStates) {
+                                            for (const state of latestStates) {
+                                                if (state.channelId === queue.voiceChannelId && state.userId !== botId) {
+                                                    stillEmpty = false;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if (stillEmpty && !queue.stay247) {
+                                            await musicManager.sendMessage(queue, { content: '👋 Everyone left the voice channel! Stopping music to save resources...' });
+                                            musicManager.leave(guild_id);
+                                        }
+                                    } catch (e) {
+                                        logger.error('VoiceCheck', 'Alone Check Error', e);
+                                    }
+                                }, 15000); // 15-second buffer
+                            }
+                        } catch (e) {
+                            logger.error('VoiceCheck', 'State Cache Error', e);
+                        }
+                    }, 1000);
                 }
             }
         } else if (packet.t === 'VOICE_SERVER_UPDATE') {
