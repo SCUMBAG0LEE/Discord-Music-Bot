@@ -66,15 +66,31 @@ client.start().then(async () => {
             const adapter = voiceAdapters.get(packet.d.guild_id);
             const botId = client.botId || client.me?.id;
             
-            if (adapter && packet.d.user_id === botId) {
-                adapter.onVoiceStateUpdate(packet.d);
+            if (packet.d.user_id === botId) {
+                if (adapter) adapter.onVoiceStateUpdate(packet.d);
+                const queue = musicManager.getQueue(packet.d.guild_id);
+                if (queue) {
+                    if (packet.d.channel_id) {
+                        queue.voiceChannelId = packet.d.channel_id;
+                    } else {
+                        // Admin manually disconnected the bot from Discord UI
+                        logger.info('Voice', `Bot was disconnected from VC by admin in guild ${packet.d.guild_id}`);
+                        if (queue.emptyVcTimeout) clearTimeout(queue.emptyVcTimeout);
+                        musicManager.leave(packet.d.guild_id);
+                    }
+                }
             }
             
             // Check if VC is empty when a user leaves or moves
             if (packet.d.user_id !== botId) {
                 const queue = musicManager.getQueue(packet.d.guild_id);
                 if (queue && queue.voiceChannelId) {
-                    setTimeout(async () => {
+                    if (queue.emptyVcTimeout) {
+                        clearTimeout(queue.emptyVcTimeout);
+                        queue.emptyVcTimeout = null;
+                    }
+
+                    queue.emptyVcTimeout = setTimeout(async () => {
                         try {
                             const cachedStates = await client.cache.voiceStates?.values(packet.d.guild_id);
                             if (cachedStates) {
@@ -93,7 +109,7 @@ client.start().then(async () => {
                         } catch (e) {
                             logger.error('VoiceCheck', 'Alone Check Error', e);
                         }
-                    }, 3000); // 3-second buffer to allow cache updates and quick reconnects
+                    }, 15000); // 15-second buffer to allow channel switching and quick reconnects
                 }
             }
         } else if (packet.t === 'VOICE_SERVER_UPDATE') {
