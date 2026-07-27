@@ -593,7 +593,7 @@ async function getTrackInfo(query, searchPrefix = '') {
                 durationRaw: data.duration ? `${Math.floor(data.duration / 60)}:${(data.duration % 60).toString().padStart(2, '0')}` : 'Live/Unknown',
                 sourceType: data.extractor === 'soundcloud' ? 'soundcloud' : (data.extractor === 'youtube' ? 'youtube' : 'other'),
                 // Keep only fields needed for streaming + codec detection (Opus passthrough)
-                _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url, acodec: data.acodec, format_id: data.format_id }
+                _ytDlpData: { url: data.url, extractor: data.extractor, webpage_url: data.webpage_url, acodec: data.acodec, format_id: data.format_id, asr: data.asr, audio_channels: data.audio_channels }
             };
         } catch (e) {
             lastError = e;
@@ -1118,6 +1118,8 @@ export class MusicManager {
                                     // Merge codec info without overwriting existing data
                                     nextSong._ytDlpData.acodec = metadata.acodec || nextSong._ytDlpData.acodec;
                                     nextSong._ytDlpData.format_id = metadata.format_id || nextSong._ytDlpData.format_id;
+                                    nextSong._ytDlpData.asr = metadata.asr || nextSong._ytDlpData.asr;
+                                    nextSong._ytDlpData.audio_channels = metadata.audio_channels || nextSong._ytDlpData.audio_channels;
                                 }
                             } catch (e) {
                                 // JSON parse failed — not critical, codec detection will fall back to transcode
@@ -1253,9 +1255,12 @@ export class MusicManager {
                     const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
                     queue.ytdlpChildProcess = ytdlpChildProcess;
 
+                    let lastYtDlpStderr = '';
                     // Log any errors from the yt-dlp process to help debug failures
                     ytdlpChildProcess.stderr.on('data', (data) => {
-                        logger.error('yt-dlp', `[${song.title}] STDERR: ${data.toString().trim()}`);
+                        const msg = data.toString().trim();
+                        if (msg) lastYtDlpStderr = msg;
+                        logger.error('yt-dlp', `[${song.title}] STDERR: ${msg}`);
                     });
                 }
                 
@@ -1271,7 +1276,7 @@ export class MusicManager {
                         fn(arg);
                     };
 
-                    // 120s timeout — generous for slow proxies, but prevents infinite hangs
+                    // 30s timeout — fails fast if yt-dlp hangs, allowing instant fallback
                     const timeout = setTimeout(() => {
                         try {
                             if (fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1024) {
@@ -1280,7 +1285,7 @@ export class MusicManager {
                             }
                         } catch (e) { /* stat failed */ }
                         settle(reject, new Error(`yt-dlp download timed out — file was never created for: ${song.title}`));
-                    }, 120000);
+                    }, 30000);
 
                     const onExit = (code) => {
                         try {
@@ -1289,7 +1294,8 @@ export class MusicManager {
                                 return;
                             }
                         } catch (e) { /* stat failed */ }
-                        settle(reject, new Error(`yt-dlp exited with code ${code} without producing audio for: ${song.title}`));
+                        const detail = lastYtDlpStderr ? ` (${lastYtDlpStderr})` : '';
+                        settle(reject, new Error(`yt-dlp exited with code ${code}${detail} without producing audio for: ${song.title}`));
                     };
 
                     // If yt-dlp already exited (prefetch completed), check immediately
@@ -1307,10 +1313,12 @@ export class MusicManager {
                     }
                 });
 
-                // Determine if the source is already Opus (format 251) — if so, we can just
+                // Determine if the source is already Opus 48kHz stereo (format 251 on YouTube) — if so, we can just
                 // remux the container (WebM → OggOpus) with zero CPU cost instead of re-encoding.
                 const sourceCodec = song._ytDlpData?.acodec || '';
-                const isAlreadyOpus = sourceCodec === 'opus' || (song._ytDlpData?.format_id === '251');
+                const sampleRate = song._ytDlpData?.asr || 48000;
+                const channels = song._ytDlpData?.audio_channels || 2;
+                const isAlreadyOpus = (sourceCodec === 'opus' || song._ytDlpData?.format_id === '251') && sampleRate === 48000 && channels === 2;
 
                 if (isAlreadyOpus) {
                     // Zero-cost codec copy: just remux WebM/Opus → OggOpus container for Discord
@@ -1324,17 +1332,18 @@ export class MusicManager {
                         '-f', 'opus'
                     ];
                 } else {
-                    // Non-Opus source (AAC, Vorbis, etc.) — must transcode to Opus for Discord
-                    logger.debug('MusicManager', `Transcoding ${sourceCodec || 'unknown'} → Opus for: ${song.title}`);
+                    // Non-Opus or non-48kHz source (AAC, Vorbis, 44.1kHz, etc.) — transcode to 48kHz Stereo Opus for Discord
+                    logger.debug('MusicManager', `Transcoding ${sourceCodec || 'unknown'} (${sampleRate}Hz/${channels}ch) → 48kHz Stereo Opus for: ${song.title}`);
                     ffmpegArgs = [
                         '-hide_banner',
                         '-threads', hardwareOptimization.threads,
                         '-i', tempFilePath,
-                        '-analyzeduration', '0',
                         '-loglevel', 'warning',
                         '-vn',
                         '-c:a', 'libopus',
                         '-b:a', '128k',
+                        '-ar', '48000',
+                        '-ac', '2',
                         '-f', 'opus'
                     ];
                 }
@@ -1360,11 +1369,12 @@ export class MusicManager {
 
                 ffmpegArgs.push(
                     '-i', actualStreamUrl,
-                    '-analyzeduration', '0',
                     '-loglevel', 'warning',
                     '-vn',
                     '-c:a', 'libopus',
-                    '-b:a', '96k',
+                    '-b:a', '128k',
+                    '-ar', '48000',
+                    '-ac', '2',
                     '-f', 'opus'
                 );
             }
@@ -1420,6 +1430,8 @@ export class MusicManager {
                     try {
                         const fallbackInfo = await getTrackInfo(song.title, 'ytsearch1:');
                         song.originalUrl = fallbackInfo.originalUrl;
+                        song.sourceType = fallbackInfo.sourceType;
+                        song._ytDlpData = fallbackInfo._ytDlpData;
                         return this.playNext(guildId);
                     } catch (fallbackError) {
                         logger.error('MusicManager', 'YouTube fallback search failed', fallbackError);
@@ -1430,6 +1442,8 @@ export class MusicManager {
                         // For SoundCloud fallback, we explicitly target SoundCloud via yt-dlp
                         const fallbackInfo = await getTrackInfo(`scsearch1:${song.title}`);
                         song.originalUrl = fallbackInfo.originalUrl;
+                        song.sourceType = fallbackInfo.sourceType;
+                        song._ytDlpData = fallbackInfo._ytDlpData;
                         return this.playNext(guildId);
                     } catch (fallbackError) {
                         logger.error('MusicManager', 'SoundCloud fallback search failed', fallbackError);

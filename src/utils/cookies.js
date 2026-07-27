@@ -38,6 +38,11 @@ function convertJsonToNetscape(jsonPath, txtPath) {
 export function getYtDlpArgs(baseArgs) {
     const args = [...baseArgs];
     
+    // Add default retry arguments to handle transient proxy timeouts or rate limits
+    if (!args.includes('--retries')) {
+        args.push('--retries', '10', '--fragment-retries', '10');
+    }
+
     // Add SOCKS5/HTTP Proxy if configured (e.g., YOUTUBE_PROXY environment variable)
     if (process.env.YOUTUBE_PROXY) {
         args.push('--proxy', process.env.YOUTUBE_PROXY);
