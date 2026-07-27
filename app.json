@@ -122,6 +122,10 @@
       "description": "The exact User-Agent string of the browser used to export your cookies, used to bypass Cloudflare/YouTube bot checks (Optional)",
       "required": false
     },
+    "YOUTUBE_PO_TOKEN": {
+      "description": "Optional manual YouTube Proof-of-Origin token string",
+      "required": false
+    },
     "DJ_ROLE_ID": {
       "description": "Discord Role ID allowed to use DJ-only commands like skip, stop, clear (Optional, everyone can use if not set)",
       "required": false

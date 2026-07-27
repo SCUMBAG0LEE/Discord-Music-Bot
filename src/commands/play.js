@@ -1,6 +1,7 @@
 import { Command, Declare, Options, createStringOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
 import { verifyVoiceConnection } from '../utils/permissions.js';
+import { logger } from '../utils/logger.js';
 
 const options = {
     query: createStringOption({
@@ -24,7 +25,7 @@ export default class PlayCommand extends Command {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[PlayCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            logger.warn('PlayCommand', `Failed to defer interaction (likely timeout or unknown interaction): ${e.message || e}`);
             return;
         }
         

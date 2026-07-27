@@ -2,6 +2,7 @@ import { Command, SubCommand, Declare, Options, Embed, createStringOption } from
 import { dbManager } from '../services/DatabaseManager.js';
 import { musicManager } from '../services/MusicManager.js';
 import { verifyVoiceConnection } from '../utils/permissions.js';
+import { logger } from '../utils/logger.js';
 
 const nameOption = {
     name: createStringOption({
@@ -54,7 +55,7 @@ export class PlaylistLoadSubCommand extends SubCommand {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[PlaylistsCommand] Failed to defer interaction:`, e.message || e);
+            logger.warn('PlaylistsCommand', `Failed to defer interaction: ${e.message || e}`);
             return;
         }
 
@@ -68,10 +69,7 @@ export class PlaylistLoadSubCommand extends SubCommand {
         await ctx.editOrReply({ content: `📂 Loading playlist **${playlist.name}** (${playlist.songs.length} songs)...` });
 
         try {
-            const channel = await ctx.client.cache.channels?.get(voiceChannelId);
-            if (!channel) {
-                return ctx.editOrReply({ content: '❌ Could not fetch your voice channel from the cache.' });
-            }
+            const channel = { id: voiceChannelId, guildId: ctx.guildId, client: ctx.client };
             const songsToPlay = playlist.songs.map(song => ({
                 title: song.title,
                 originalUrl: song.url,

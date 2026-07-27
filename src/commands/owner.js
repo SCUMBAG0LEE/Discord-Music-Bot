@@ -6,6 +6,7 @@ import util from 'util';
 const execAsync = util.promisify(child_process.exec);
 import { musicManager, ffmpegInfo, hardwareOptimization } from '../services/MusicManager.js';
 import { isOwner, ownerOnlyError } from '../utils/permissions.js';
+import { logger } from '../utils/logger.js';
 
 // Helper to convert attachment or URL to base64 data URI
 async function getBase64Image(imageUrl) {
@@ -46,7 +47,7 @@ export class SetAvatarCommand extends Command {
         try {
             await ctx.deferReply({ flags: 64 });
         } catch (e) {
-            console.warn(`[SetAvatarCommand] Failed to defer interaction:`, e.message || e);
+            logger.warn('SetAvatarCommand', `Failed to defer interaction: ${e.message || e}`);
             return;
         }
 
@@ -55,7 +56,7 @@ export class SetAvatarCommand extends Command {
             await ctx.client.rest.users.editCurrentUser({ avatar: base64 });
             return ctx.editOrReply({ content: '✅ Avatar updated successfully!' });
         } catch (error) {
-            console.error('SetAvatar Error:', error);
+            logger.error('SetAvatarCommand', 'SetAvatar Error:', error);
             return ctx.editOrReply({ content: `❌ Failed to update avatar: ${error.message}` });
         }
     }
@@ -89,14 +90,14 @@ export class SetBannerCommand extends Command {
             try {
                 await ctx.deferReply({ flags: 64 });
             } catch (e) {
-                console.warn(`[SetBannerCommand] Failed to defer interaction:`, e.message || e);
+                logger.warn('SetBannerCommand', `Failed to defer interaction: ${e.message || e}`);
                 return;
             }
             try {
                 await ctx.client.rest.users.editCurrentUser({ banner: null });
                 return ctx.editOrReply({ content: '✅ Banner removed!' });
             } catch (error) {
-                console.error('SetBanner Error:', error);
+                logger.error('SetBannerCommand', 'SetBanner Error:', error);
                 return ctx.editOrReply({ content: `❌ Failed to remove banner: ${error.message}` });
             }
         }
@@ -112,7 +113,7 @@ export class SetBannerCommand extends Command {
         try {
             await ctx.deferReply({ flags: 64 });
         } catch (e) {
-            console.warn(`[SetBannerCommand] Failed to defer interaction:`, e.message || e);
+            logger.warn('SetBannerCommand', `Failed to defer interaction: ${e.message || e}`);
             return;
         }
 
@@ -121,7 +122,7 @@ export class SetBannerCommand extends Command {
             await ctx.client.rest.users.editCurrentUser({ banner: base64 });
             return ctx.editOrReply({ content: '✅ Banner updated successfully!' });
         } catch (error) {
-            console.error('SetBanner Error:', error);
+            logger.error('SetBannerCommand', 'SetBanner Error:', error);
             return ctx.editOrReply({ content: `❌ Failed to update banner: ${error.message}` });
         }
     }
@@ -148,7 +149,7 @@ export class SetNameCommand extends Command {
         try {
             await ctx.deferReply({ flags: 64 });
         } catch (e) {
-            console.warn(`[SetNameCommand] Failed to defer interaction:`, e.message || e);
+            logger.warn('SetNameCommand', `Failed to defer interaction: ${e.message || e}`);
             return;
         }
 
@@ -156,7 +157,7 @@ export class SetNameCommand extends Command {
             await ctx.client.rest.users.editCurrentUser({ username: name });
             return ctx.editOrReply({ content: `✅ Username changed to **${name}**` });
         } catch (error) {
-            console.error('SetName Error:', error);
+            logger.error('SetNameCommand', 'SetName Error:', error);
             return ctx.editOrReply({ content: `❌ Failed to change username: ${error.message}` });
         }
     }

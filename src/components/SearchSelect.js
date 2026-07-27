@@ -1,5 +1,6 @@
 import { ComponentCommand } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
+import { logger } from '../utils/logger.js';
 
 export default class SearchSelectComponent extends ComponentCommand {
     componentType = "StringSelect";
@@ -12,7 +13,7 @@ export default class SearchSelectComponent extends ComponentCommand {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[SearchSelectComponent] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            logger.warn('SearchSelectComponent', `Failed to defer interaction (likely timeout or unknown interaction): ${e.message || e}`);
             return;
         }
         
@@ -29,7 +30,7 @@ export default class SearchSelectComponent extends ComponentCommand {
         try {
             await musicManager.play(channel, url, ctx);
         } catch (e) {
-            console.error("Search Component Error:", e);
+            logger.error('SearchSelectComponent', "Search Component Error:", e);
             return ctx.editOrReply({ content: '❌ An error occurred while trying to play the selected song.' });
         }
     }

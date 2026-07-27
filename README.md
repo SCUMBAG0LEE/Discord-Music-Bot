@@ -159,6 +159,13 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `YOUTUBE_USER_AGENT` | ❌ | The exact User-Agent string from the browser used to export your cookies |
 | `YOUTUBE_PO_TOKEN` | ❌ | Optional manual YouTube Proof-of-Origin token string |
 | `SKIP_COMMAND_UPLOAD` | ❌ | Set `true` to skip uploading commands on startup (faster restarts) |
+| `MAX_QUEUE_SIZE` | ❌ | Maximum number of songs allowed in the queue (default: unlimited) |
+| `MAX_DURATION` | ❌ | Maximum allowed song duration in seconds (default: unlimited) |
+| `IDLE_TIMEOUT` | ❌ | Seconds before the bot disconnects when voice channel is empty (default: `60`) |
+| `STAY_IN_CHANNEL` | ❌ | Set `true` to enable 24/7 mode by default for all servers |
+| `CLOUDFLARE_D1_ACCOUNT_ID` | ❌ | Required if using Cloudflare D1 serverless database |
+| `CLOUDFLARE_D1_DATABASE_ID` | ❌ | Required if using Cloudflare D1 serverless database |
+| `CLOUDFLARE_D1_API_TOKEN` | ❌ | Required if using Cloudflare D1 serverless database |
 
 > **Song in Status behavior:** When `SONG_IN_STATUS` is enabled (or toggled per-server with `/songinstatus`), the bot's activity changes dynamically based on what's happening:
 > | Scenario | Activity |

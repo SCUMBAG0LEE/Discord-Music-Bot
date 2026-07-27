@@ -742,73 +742,6 @@ export class MusicManager {
         }
     }
 
-    shuffle(guildId) {
-        const queue = this.getQueue(guildId);
-        if (queue && queue.songs.length > 1) {
-            // Clean up all existing prefetches since the order is changing
-            for (let i = 1; i < queue.songs.length; i++) {
-                this._cleanupSong(queue.songs[i]);
-            }
-
-            const current = queue.songs.shift();
-            for (let i = queue.songs.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [queue.songs[i], queue.songs[j]] = [queue.songs[j], queue.songs[i]];
-            }
-            queue.songs.unshift(current);
-
-            // Prefetch the new next song
-            if (queue.songs.length > 1) {
-                this.prefetchNextTrack(guildId, queue.songs[1]);
-            }
-        }
-    }
-
-    clear(guildId) {
-        const queue = this.getQueue(guildId);
-        if (queue && queue.songs.length > 1) {
-            const removed = queue.songs.splice(1);
-            for (const song of removed) {
-                this._cleanupSong(song);
-            }
-        }
-    }
-
-    remove(guildId, index) {
-        const queue = this.getQueue(guildId);
-        if (queue && index > 0 && index < queue.songs.length) {
-            const [removedSong] = queue.songs.splice(index, 1);
-            this._cleanupSong(removedSong);
-
-            // If we removed the song that was next, prefetch the new next one
-            if (index === 1 && queue.songs.length > 1) {
-                this.prefetchNextTrack(guildId, queue.songs[1]);
-            }
-            return removedSong;
-        }
-        return null;
-    }
-
-    move(guildId, from, to) {
-        const queue = this.getQueue(guildId);
-        if (queue && from > 0 && from < queue.songs.length && to > 0 && to < queue.songs.length) {
-            // Clean up prefetch for the song that was at the "next" position, as it might change
-            if (queue.songs[1]) {
-                this._cleanupSong(queue.songs[1]);
-            }
-
-            const [song] = queue.songs.splice(from, 1);
-            queue.songs.splice(to, 0, song);
-
-            // Prefetch the new next song
-            if (queue.songs.length > 1) {
-                this.prefetchNextTrack(guildId, queue.songs[1]);
-            }
-            return song;
-        }
-        return null;
-    }
-
     async _ensureQueue(channel, textChannel) {
         const guildId = channel.guildId;
         let queue = this.getQueue(guildId);
@@ -951,17 +884,6 @@ export class MusicManager {
         });
 
         return queue;
-    }
-
-    jump(guildId, index) {
-        const queue = this.getQueue(guildId);
-        if (queue && index > 0 && index < queue.songs.length) {
-            const removed = queue.songs.splice(1, index - 1);
-            for (const song of removed) {
-                this._cleanupSong(song);
-            }
-            queue.player.stop(); // Stops current song, triggers Idle which calls playNext
-        }
     }
 
     async playSongs(channel, songs, textChannel) {
@@ -1260,6 +1182,7 @@ export class MusicManager {
                     delete song._ytDlpData.url;
                 }
                 // AUDIO PREFETCHING & BUFFERING OPTIMIZATION
+                let lastYtDlpStderr = '';
                 if (song.prefetchFilePath && !song.isPrefetching) {
                     // Use the already background-prefetched file (HDD read optimization)
                     logger.info('Prefetch', `Using prefetched audio file for: ${song.title}`);
@@ -1295,7 +1218,6 @@ export class MusicManager {
                     const ytdlpChildProcess = spawn(ytdlpPath, ytdlpArgs, { windowsHide: true });
                     queue.ytdlpChildProcess = ytdlpChildProcess;
 
-                    let lastYtDlpStderr = '';
                     // Log any errors from the yt-dlp process to help debug failures
                     ytdlpChildProcess.stderr.on('data', (data) => {
                         const msg = data.toString().trim();
@@ -1595,16 +1517,19 @@ export class MusicManager {
     previous(guildId) {
         const queue = this.getQueue(guildId);
         if (queue && queue.history.length > 0) {
-            const currentSong = queue.songs[0];
             const previousSong = queue.history.pop();
             
-            // Insert current back to queue (as next) and put previous at front
-            if (currentSong) {
-                queue.songs.unshift(previousSong);
-            } else {
-                queue.songs.push(previousSong);
-            }
-            queue.player.stop(); // triggers Idle and plays what's at index 0
+            // Reset fallback state so the previous song gets a fresh attempt
+            previousSong.fallbackStage = 0;
+            
+            // Insert previous song at front of queue (it will be songs[0] when playNext fires)
+            queue.songs.unshift(previousSong);
+            
+            // Use isSeeking to bypass the Idle handler's shift/loop logic entirely.
+            // Without this, the Idle handler would push songs[0] (our previousSong) back to history
+            // and then shift it off, effectively replaying the current song instead.
+            queue.isSeeking = true;
+            queue.player.stop(); // triggers Idle → isSeeking path → playNext(songs[0] = previousSong)
         }
     }
 

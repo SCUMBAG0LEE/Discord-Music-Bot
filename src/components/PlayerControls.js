@@ -51,9 +51,8 @@ export default class PlayerControls extends ComponentCommand {
                 break;
                 
             case 'player_stop':
-                musicManager.clear(ctx.guildId);
-                if (queue.player) queue.player.stop();
                 await ctx.interaction.update({ content: '⏹️ **Playback stopped.**', components: [] });
+                musicManager.leave(ctx.guildId);
                 break;
         }
     }

@@ -44,10 +44,7 @@ COPY . .
 # Ensure orchestration script is executable
 RUN chmod +x entrypoint.sh
 
-# Create a non-root user for security best practice
-RUN groupadd -r botuser && useradd -r -g botuser -d /app botuser \
-    && chown -R botuser:botuser /app
-USER botuser
+
 
 # Set environment variables
 ENV NODE_ENV=production

@@ -1,6 +1,7 @@
 import { Command, Declare, Options, Embed, createStringOption } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
 import { canUseDJCommands, djOnlyError, verifyVoiceConnection } from '../utils/permissions.js';
+import { logger } from '../utils/logger.js';
 
 function parseTimeToSeconds(timeStr) {
     if (!timeStr) return 0;
@@ -159,7 +160,7 @@ export class RadioCommand extends Command {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[AdvancedCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            logger.warn('AdvancedCommand', `Failed to defer interaction (likely timeout or unknown interaction): ${e.message || e}`);
             return;
         }
 

@@ -2,6 +2,7 @@ import { Command, Declare, Options, createStringOption, Embed, ActionRow, String
 import { getYtDlpArgs } from '../utils/cookies.js';
 import { verifyVoiceConnection } from '../utils/permissions.js';
 import { musicManager, execFileAsync } from '../services/MusicManager.js';
+import { logger } from '../utils/logger.js';
 
 const searchOptions = {
     query: createStringOption({
@@ -25,7 +26,7 @@ export default class SearchCommand extends Command {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[SearchCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            logger.warn('SearchCommand', `Failed to defer interaction (likely timeout or unknown interaction): ${e.message || e}`);
             return;
         }
         
@@ -86,7 +87,7 @@ export default class SearchCommand extends Command {
             await ctx.editOrReply({ content: '', embeds: [embed], components: [row] });
             
         } catch (e) {
-            console.error("Search Error:", e);
+            logger.error('SearchCommand', "Search Error:", e);
             const errorMessage = e.message ? e.message.substring(0, 500) : 'Unknown error';
             return ctx.editOrReply({ content: `❌ An error occurred while searching: \`${errorMessage}\`` });
         }

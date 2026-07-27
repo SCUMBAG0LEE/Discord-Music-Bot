@@ -80,11 +80,22 @@ heroku config:set CLOUDFLARE_D1_API_TOKEN="your_cloudflare_api_token" -a your-bo
 heroku config:set LOG_LEVEL="INFO" -a your-bot-app-name
 heroku config:set ACTIVITY_TYPE="LISTENING" -a your-bot-app-name
 heroku config:set ACTIVITY_NAME="music | /help" -a your-bot-app-name
+# YouTube / Bypasses
 heroku config:set YOUTUBE_PROXY="socks5://username:password@ip:port" -a your-bot-app-name
 heroku config:set YOUTUBE_COOKIES="" -a your-bot-app-name
+heroku config:set YOUTUBE_USER_AGENT="Mozilla/5.0..." -a your-bot-app-name
+heroku config:set YOUTUBE_PO_TOKEN="your_po_token" -a your-bot-app-name
+
+# Limits & Behavior
+heroku config:set MAX_QUEUE_SIZE="100" -a your-bot-app-name
+heroku config:set MAX_DURATION="0" -a your-bot-app-name
+heroku config:set IDLE_TIMEOUT="60" -a your-bot-app-name
+heroku config:set STAY_IN_CHANNEL="false" -a your-bot-app-name
+heroku config:set SKIP_RATIO="0.5" -a your-bot-app-name
 
 # Performance / Startup
 heroku config:set SKIP_COMMAND_UPLOAD="false" -a your-bot-app-name
+heroku config:set SYSTEM_DISK_TYPE="auto" -a your-bot-app-name
 ```
 
 ---

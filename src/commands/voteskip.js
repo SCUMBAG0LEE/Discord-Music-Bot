@@ -1,6 +1,8 @@
 import { Command, Declare } from 'seyfert';
 import { musicManager } from '../services/MusicManager.js';
 import { verifyVoiceConnection } from '../utils/permissions.js';
+import { getEffectiveSkipRatio } from '../services/serverSettings.js';
+import { logger } from '../utils/logger.js';
 
 @Declare({
     name: 'voteskip',
@@ -33,10 +35,10 @@ export class VoteSkipCommand extends Command {
             // Subtract the bot itself from listener count
             if (listeners > 1) listeners -= 1; 
         } catch (e) {
-            console.error("Error fetching voice states:", e);
+            logger.error('VoteSkip', 'Error fetching voice states', e);
         }
         
-        const ratio = parseFloat(process.env.SKIP_RATIO) || 0.5;
+        const ratio = await getEffectiveSkipRatio(ctx.guildId, parseFloat(process.env.SKIP_RATIO) || 0.5);
         const requiredVotes = Math.max(1, Math.ceil(listeners * ratio));
         
         if (queue.skipVotes.size >= requiredVotes) {

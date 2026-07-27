@@ -5,6 +5,7 @@ import path from 'path';
 import { musicManager, ffmpegInfo, hardwareOptimization, execFileAsync } from '../services/MusicManager.js';
 import { getVoiceConnection } from '@discordjs/voice';
 import { isOwner } from '../utils/permissions.js';
+import { logger } from '../utils/logger.js';
 
 function formatDuration(seconds) {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -26,7 +27,7 @@ export class PingCommand extends Command {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[PingCommand] Failed to defer interaction (likely timeout or unknown interaction):`, e.message || e);
+            logger.warn('PingCommand', `Failed to defer interaction (likely timeout or unknown interaction): ${e.message || e}`);
             return;
         }
         const wsPing = ctx.client.gateway.latency;
@@ -79,7 +80,7 @@ export class DebugCommand extends Command {
         try {
             await ctx.deferReply();
         } catch (e) {
-            console.warn(`[DebugCommand] Failed to defer:`, e.message || e);
+            logger.warn('DebugCommand', `Failed to defer: ${e.message || e}`);
             return;
         }
 
