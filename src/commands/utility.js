@@ -179,7 +179,6 @@ export class HelpCommand extends Command {
                     { name: '`/pause`', value: 'Pause current audio playback.' },
                     { name: '`/resume`', value: 'Resume paused audio playback.' },
                     { name: '`/stop`', value: 'Stop playback, clear queue, and leave voice channel.' },
-                    { name: '`/volume <0-200>`', value: 'Adjust playback volume percentage.' },
                     { name: '`/seek <timestamp>`', value: 'Seek to a specific timestamp in the current song (e.g. `1:30`, `90`).' },
                     { name: '`/replay`', value: 'Restart the currently playing song from the beginning.' },
                     { name: '`/previous`', value: 'Play the previously played song from history.' }
@@ -225,7 +224,7 @@ export class HelpCommand extends Command {
             .setTitle('🎵 Music Bot Commands')
             .addFields(
                 { name: '🎶 Playing Music', value: '`/play` `/forceplay` `/playnext` `/search` `/radio`', inline: false },
-                { name: '⏯️ Playback Control', value: '`/pause` `/resume` `/stop` `/volume` `/seek` `/replay` `/previous`', inline: false },
+                { name: '⏯️ Playback Control', value: '`/pause` `/resume` `/stop` `/seek` `/replay` `/previous`', inline: false },
                 { name: '📋 Queue Management', value: '`/queue` `/nowplaying` `/shuffle` `/clear` `/remove` `/move` `/jump` `/skip` `/voteskip`', inline: false },
                 { name: '🔧 Utility', value: '`/help` `/ping` `/debug` `/lyrics`', inline: false }
             )

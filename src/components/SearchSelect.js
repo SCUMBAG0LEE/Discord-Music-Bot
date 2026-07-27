@@ -24,14 +24,7 @@ export default class SearchSelectComponent extends ComponentCommand {
             return ctx.editOrReply({ content: '❌ You must join a voice channel first!' });
         }
         
-        let channel = await ctx.client.cache.channels?.get(voiceChannelId);
-        if (!channel) {
-            try {
-                channel = await ctx.client.channels.fetch(voiceChannelId);
-            } catch (e) {
-                channel = { id: voiceChannelId, guildId: ctx.guildId, client: ctx.client };
-            }
-        }
+        const channel = { id: voiceChannelId, guildId: ctx.guildId, client: ctx.client };
 
         try {
             await musicManager.play(channel, url, ctx);

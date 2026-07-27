@@ -517,7 +517,7 @@ export class SystemInfoCommand extends Command {
             .addFields([
                 { 
                     name: '🤖 Bot & Process', 
-                    value: `> **Guilds:** \`${guildCount}\`\n> **Active Streams:** \`${activeQueues}\` (${totalQueuedTracks} queued)\n> **Bot Uptime:** \`${botUptimeStr}\`\n> **PID:** \`${process.pid}\`\n> **OS User:** \`${staticSpecs.osUsername}\`\n> **Runtime:** \`${runtimeStr}\``, 
+                    value: `> **Guilds:** \`${guildCount}\`\n> **Active Streams:** \`${activeQueues}\` (${totalQueuedTracks} queued)\n> **Bot Uptime:** \`${botUptimeStr}\`\n> **PID:** \`${process.pid}\`\n> **Shard:** \`${ctx.shardId ?? 0} / ${ctx.client.gateway?.totalShards ?? 1}\`\n> **OS User:** \`${staticSpecs.osUsername}\`\n> **Runtime:** \`${runtimeStr}\``, 
                     inline: true 
                 },
                 { 

@@ -1754,6 +1754,78 @@ export class MusicManager {
         }
     }
 
+    shuffle(guildId) {
+        const queue = this.getQueue(guildId);
+        if (!queue || queue.songs.length < 3) return; // Need at least 3 (playing + 2 upcoming) to shuffle
+        
+        const upcoming = queue.songs.slice(1);
+        for (let i = upcoming.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [upcoming[i], upcoming[j]] = [upcoming[j], upcoming[i]];
+        }
+        
+        queue.songs = [queue.songs[0], ...upcoming];
+        
+        if (queue.songs.length > 1) {
+            this.prefetchNextTrack(guildId, queue.songs[1]);
+        }
+    }
+
+    clear(guildId) {
+        const queue = this.getQueue(guildId);
+        if (!queue || queue.songs.length < 2) return;
+        
+        const removed = queue.songs.splice(1);
+        for (const s of removed) {
+            this._cleanupSong(s);
+        }
+    }
+
+    remove(guildId, index) {
+        const queue = this.getQueue(guildId);
+        if (!queue || index < 1 || index >= queue.songs.length) return null;
+        
+        const [removed] = queue.songs.splice(index, 1);
+        this._cleanupSong(removed);
+        
+        if (index === 1 && queue.songs.length > 1) {
+            this.prefetchNextTrack(guildId, queue.songs[1]);
+        }
+        
+        return removed;
+    }
+
+    move(guildId, fromIndex, toIndex) {
+        const queue = this.getQueue(guildId);
+        if (!queue || fromIndex < 1 || fromIndex >= queue.songs.length || toIndex < 1 || toIndex >= queue.songs.length) return null;
+        
+        const [moved] = queue.songs.splice(fromIndex, 1);
+        queue.songs.splice(toIndex, 0, moved);
+        
+        if ((fromIndex === 1 || toIndex === 1) && queue.songs.length > 1) {
+            this.prefetchNextTrack(guildId, queue.songs[1]);
+        }
+        
+        return moved;
+    }
+
+    jump(guildId, index) {
+        const queue = this.getQueue(guildId);
+        if (!queue || index < 1 || index >= queue.songs.length) return;
+        
+        const skipped = queue.songs.splice(1, index - 1);
+        
+        if (skipped.length > 0) {
+            queue.history.push(...skipped);
+            while (queue.history.length > 50) {
+                const oldest = queue.history.shift();
+                this._cleanupSong(oldest);
+            }
+        }
+        
+        this.skip(guildId);
+    }
+
     leave(guildId) {
         const queue = this.getQueue(guildId);
         if (queue) {
