@@ -335,37 +335,38 @@ export class SystemInfoCommand extends Command {
         let kernelVersion = `${os.type()} ${os.release()}`;
 
         if (os.type() === 'Windows_NT') {
+            osName = 'Windows';
             kernelVersion = `NT ${os.release()}`;
             const buildNum = parseInt(os.release().split('.')[2] || '0', 10);
             if (buildNum >= 22000) {
                 osName = 'Windows 11';
             } else if (buildNum >= 10240) {
                 osName = 'Windows 10 / Server 2016+';
-            } else if (buildNum >= 9200) {
-                osName = 'Windows 8.1';
-            } else {
-                osName = 'Windows';
             }
         } else if (os.type() === 'Darwin') {
+            osName = 'macOS';
             kernelVersion = `Darwin ${os.release()}`;
-            const darwinMajor = parseInt(os.release().split('.')[0] || '0', 10);
-            const macVersionMap = {
-                24: 'macOS 15 (Sequoia)',
-                23: 'macOS 14 (Sonoma)',
-                22: 'macOS 13 (Ventura)',
-                21: 'macOS 12 (Monterey)',
-                20: 'macOS 11 (Big Sur)',
-                19: 'macOS 10.15 (Catalina)'
-            };
-            osName = macVersionMap[darwinMajor] || 'macOS';
+            try {
+                if (fs.existsSync('/System/Library/CoreServices/SystemVersion.plist')) {
+                    const plist = fs.readFileSync('/System/Library/CoreServices/SystemVersion.plist', 'utf8');
+                    const match = plist.match(/<key>ProductVersion<\/key>\s*<string>([^<]+)<\/string>/i);
+                    if (match && match[1]) {
+                        osName = `macOS ${match[1].trim()}`;
+                    }
+                }
+            } catch (e) {}
         } else if (os.type() === 'Linux') {
+            osName = 'Linux';
             kernelVersion = `Linux ${os.release()}`;
             try {
                 if (fs.existsSync('/etc/os-release')) {
                     const releaseContent = fs.readFileSync('/etc/os-release', 'utf8');
-                    const match = releaseContent.match(/PRETTY_NAME="([^"]+)"/) || releaseContent.match(/PRETTY_NAME=(.+)/);
-                    if (match && match[1]) {
-                        osName = match[1].replace(/"/g, '').trim();
+                    const lines = releaseContent.split('\n');
+                    const prettyLine = lines.find(l => l.startsWith('PRETTY_NAME='));
+                    const nameLine = lines.find(l => l.startsWith('NAME='));
+                    const targetLine = prettyLine || nameLine;
+                    if (targetLine) {
+                        osName = targetLine.split('=')[1].replace(/"/g, '').trim();
                     }
                 }
             } catch (e) {}
