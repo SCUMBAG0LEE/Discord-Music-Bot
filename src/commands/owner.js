@@ -2,7 +2,7 @@ import { Command, Declare, Options, Embed, createStringOption, createBooleanOpti
 import fs from 'fs';
 import os from 'os';
 import child_process from 'child_process';
-import { musicManager } from '../services/MusicManager.js';
+import { musicManager, ffmpegInfo, hardwareOptimization } from '../services/MusicManager.js';
 import { isOwner, ownerOnlyError } from '../utils/permissions.js';
 
 // Helper to convert attachment or URL to base64 data URI
@@ -290,14 +290,23 @@ export class SystemInfoCommand extends Command {
         if (!isOwner(ctx.member.id)) return ownerOnlyError(ctx);
 
         const used = process.memoryUsage();
-        const uptime = Math.floor(process.uptime());
-        const days = Math.floor(uptime / 86400);
-        const hours = Math.floor((uptime % 86400) / 3600);
-        const mins = Math.floor((uptime % 3600) / 60);
-        const secs = uptime % 60;
-        const uptimeStr = `${days}d ${hours}h ${mins}m ${secs}s`;
+        const formatUptimeSec = (sec) => {
+            const s = Math.floor(sec);
+            const d = Math.floor(s / 86400);
+            const h = Math.floor((s % 86400) / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const rSec = s % 60;
+            return `${d}d ${h}h ${m}m ${rSec}s`;
+        };
+
+        const botUptimeStr = formatUptimeSec(process.uptime());
+        const serverUptimeStr = formatUptimeSec(os.uptime());
 
         const activeQueues = musicManager.queues.size;
+        let totalQueuedTracks = 0;
+        for (const q of musicManager.queues.values()) {
+            if (q.songs) totalQueuedTracks += q.songs.length;
+        }
         
         let guildCount = 0;
         try {
@@ -305,13 +314,84 @@ export class SystemInfoCommand extends Command {
             if (guilds) guildCount = guilds.length;
         } catch (e) {}
 
-        let systemIp = 'Fetch Failed';
+        let voiceCipher = 'sodium-native (aead_xchacha20_poly1305)';
         try {
-            // Use api.ipify.org as it strictly returns raw text, and truncate to prevent 1024 char embed limit crashes
-            const res = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(3000) });
-            const rawText = await res.text();
-            systemIp = rawText.trim().substring(0, 50);
-        } catch(e) {}
+            if (typeof Bun !== 'undefined') {
+                // Bun supports native sodium or fallback
+                voiceCipher = 'sodium-native / davey (UDP AEAD)';
+            }
+        } catch (e) {}
+
+        // Network diagnostics: IPv4 & IPv6
+        let ipv4 = 'Fetch Failed';
+        let ipv6 = 'N/A (No IPv6 route)';
+        try {
+            const res4 = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(2500) });
+            ipv4 = (await res4.text()).trim().substring(0, 45);
+        } catch (e) {}
+
+        try {
+            const res6 = await fetch('https://api6.ipify.org', { signal: AbortSignal.timeout(2500) });
+            const text6 = (await res6.text()).trim().substring(0, 45);
+            if (text6 && text6 !== ipv4) ipv6 = text6;
+        } catch (e) {}
+
+        // Cookie diagnostics
+        let cookieStatus = 'Not Loaded';
+        try {
+            if (process.env.YOUTUBE_COOKIES) {
+                const val = process.env.YOUTUBE_COOKIES.trim();
+                const isB64 = !val.startsWith('#') && !val.startsWith('[');
+                const lenKb = (Buffer.byteLength(val, 'utf8') / 1024).toFixed(1);
+                cookieStatus = `Loaded from ENV (${lenKb} KB | ${isB64 ? 'Base64 Encoded' : 'Raw Text'})`;
+            } else if (fs.existsSync('./youtube-cookies.txt')) {
+                const stats = fs.statSync('./youtube-cookies.txt');
+                cookieStatus = `./youtube-cookies.txt (${(stats.size / 1024).toFixed(1)} KB | Netscape)`;
+            } else if (fs.existsSync('./cookies.txt')) {
+                const stats = fs.statSync('./cookies.txt');
+                cookieStatus = `./cookies.txt (${(stats.size / 1024).toFixed(1)} KB | Netscape)`;
+            } else if (fs.existsSync('./youtube-cookies.json')) {
+                const stats = fs.statSync('./youtube-cookies.json');
+                cookieStatus = `./youtube-cookies.json (${(stats.size / 1024).toFixed(1)} KB | JSON Auto-Convert)`;
+            } else if (fs.existsSync('./cookies.json')) {
+                const stats = fs.statSync('./cookies.json');
+                cookieStatus = `./cookies.json (${(stats.size / 1024).toFixed(1)} KB | JSON Auto-Convert)`;
+            }
+        } catch (e) {
+            cookieStatus = 'Error Inspecting Cookie File';
+        }
+
+        // User-Agent diagnostics
+        const rawUserAgent = process.env.YOUTUBE_USER_AGENT;
+        const userAgentStr = rawUserAgent 
+            ? (rawUserAgent.length > 55 ? `${rawUserAgent.substring(0, 55)}...` : rawUserAgent) 
+            : 'Default yt-dlp User-Agent';
+
+        // PoToken diagnostics
+        const poTokenStr = process.env.YOUTUBE_PO_TOKEN 
+            ? `Active (${process.env.YOUTUBE_PO_TOKEN.substring(0, 15)}...)` 
+            : 'Plugin / Auto-Generator Active';
+
+        // Proxy diagnostics
+        const rawProxy = process.env.YOUTUBE_PROXY || '';
+        const proxyStr = rawProxy 
+            ? (rawProxy.length > 50 ? `${rawProxy.substring(0, 50)}...` : rawProxy) 
+            : 'Direct Connection (No Proxy)';
+
+        // Proxy Outbound IP resolution (what YouTube actually sees)
+        let proxyOutboundIpv4 = 'N/A';
+        let proxyOutboundIpv6 = 'N/A (No IPv6 route)';
+        if (rawProxy) {
+            try {
+                const out4 = child_process.execSync(`curl -s -m 3 --proxy "${rawProxy}" https://api.ipify.org`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 3000 }).trim();
+                if (out4) proxyOutboundIpv4 = out4.substring(0, 45);
+            } catch (e) {}
+
+            try {
+                const out6 = child_process.execSync(`curl -s -m 3 --proxy "${rawProxy}" https://api6.ipify.org`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 3000 }).trim();
+                if (out6 && out6 !== proxyOutboundIpv4) proxyOutboundIpv6 = out6.substring(0, 45);
+            } catch (e) {}
+        }
 
         const cpus = os.cpus();
         let cpuModel = cpus[0]?.model?.trim();
@@ -329,7 +409,7 @@ export class SystemInfoCommand extends Command {
         if (!cpuModel || cpuModel.toLowerCase() === 'unknown' || cpuModel === '') {
             try {
                 if (os.type() === 'Linux') {
-                    const lscpuOut = child_process.execSync('lscpu 2>/dev/null', { encoding: 'utf8', timeout: 1000 });
+                    const lscpuOut = child_process.execSync('lscpu', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 1000 });
                     const match = lscpuOut.match(/Model name:\s*(.+)/i);
                     if (match && match[1]) {
                         cpuModel = match[1].trim();
@@ -396,33 +476,76 @@ export class SystemInfoCommand extends Command {
             } catch (e) {}
         }
 
+        let ytdlpVersion = 'Unknown';
+        const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+        try {
+            const out = child_process.execSync(`"${ytdlpPath}" --version 2>/dev/null`, { encoding: 'utf8', timeout: 1000 });
+            if (out) ytdlpVersion = out.trim();
+        } catch (e) {}
+
+        let osUsername = 'Unknown';
+        try {
+            const info = os.userInfo();
+            if (info && info.username) osUsername = info.username;
+        } catch (e) {
+            osUsername = process.env.USER || process.env.USERNAME || 'Unknown';
+        }
+
+        let runtimeStr = `Node.js v${process.versions?.node || process.version}`;
+        if (typeof Bun !== 'undefined') {
+            runtimeStr = `Bun v${Bun.version}`;
+        } else if (typeof Deno !== 'undefined') {
+            runtimeStr = `Deno v${Deno.version?.deno || 'Unknown'}`;
+        }
+
+        const dbEngine = (process.env.CLOUDFLARE_D1_TOKEN && process.env.CLOUDFLARE_D1_DATABASE_ID) 
+            ? 'Cloudflare D1 (Serverless SQLite)' 
+            : 'Local bun:sqlite (WAL Mode)';
+
         const embed = new Embed()
-            .setTitle('🔧 Host Server Diagnostics')
+            .setTitle('🔧 Owner Server & Bypass Diagnostics')
             .setColor('#FF6B6B')
             .addFields([
                 { 
-                    name: '🤖 Bot Status', 
-                    value: `Guilds: ${guildCount}\nUptime: ${uptimeStr}\nActive Streams: ${activeQueues}`, 
+                    name: '🤖 Bot & Process', 
+                    value: `> **Guilds:** \`${guildCount}\`\n> **Active Streams:** \`${activeQueues}\` (${totalQueuedTracks} queued)\n> **Bot Uptime:** \`${botUptimeStr}\`\n> **PID:** \`${process.pid}\`\n> **OS User:** \`${osUsername}\`\n> **Runtime:** \`${runtimeStr}\``, 
                     inline: true 
                 },
                 { 
-                    name: '💾 Memory (Node.js / Bun)', 
-                    value: `Heap Used: ${(used.heapUsed / 1024 / 1024).toFixed(2)} MB\nRSS: ${(used.rss / 1024 / 1024).toFixed(2)} MB`, 
+                    name: '💾 Memory Usage', 
+                    value: `> **Heap:** \`${(used.heapUsed / 1024 / 1024).toFixed(2)} MB\`\n> **RSS:** \`${(used.rss / 1024 / 1024).toFixed(2)} MB\`\n> **External:** \`${(used.external / 1024 / 1024).toFixed(2)} MB\``, 
                     inline: true 
                 },
                 { 
-                    name: '🌐 Network', 
-                    value: `System IP: \`${systemIp}\``, 
-                    inline: true 
+                    name: '📁 Database & Storage Settings', 
+                    value: `> **Database:** \`${dbEngine}\`\n> **Storage:** \`${hardwareOptimization.diskType.toUpperCase()}\` | **Buffer:** \`${hardwareOptimization.bufferSizeMB} MB\` | **Threads:** \`${hardwareOptimization.threads}\``, 
+                    inline: false 
+                },
+                { 
+                    name: '🎵 Music Engine Binaries', 
+                    value: `> **FFmpeg:** \`v${ffmpegInfo.version}\` (${ffmpegInfo.type})\n> **FFmpeg Path:** \`${ffmpegInfo.path}\`\n> **yt-dlp:** \`v${ytdlpVersion}\`\n> **yt-dlp Path:** \`${ytdlpPath}\``, 
+                    inline: false 
+                },
+                { 
+                    name: '🌐 Network & Proxy IP Addresses', 
+                    value: rawProxy 
+                        ? `> **Host IPv4:** \`${ipv4}\`\n> **Host IPv6:** \`${ipv6}\`\n> **Proxy Endpoint:** \`${proxyStr}\`\n> **Proxy Outbound IPv4:** \`${proxyOutboundIpv4}\`\n> **Proxy Outbound IPv6:** \`${proxyOutboundIpv6}\``
+                        : `> **Host IPv4:** \`${ipv4}\`\n> **Host IPv6:** \`${ipv6}\`\n> **Proxy Route:** \`Direct Connection (No Proxy)\``, 
+                    inline: false 
+                },
+                { 
+                    name: '🔑 YouTube Bypass Configuration', 
+                    value: `> **Cookies:** \`${cookieStatus}\`\n> **User-Agent:** \`${userAgentStr}\`\n> **PoToken:** \`${poTokenStr}\``, 
+                    inline: false 
                 },
                 { 
                     name: '🖥️ Hardware Specs', 
-                    value: `**CPU:** ${cpuModel}\n**Cores:** ${coreCount}\n**RAM:** ${freeMem} GB free / ${totalMem} GB total`, 
+                    value: `> **CPU:** \`${cpuModel}\`\n> **Cores:** \`${coreCount}\`\n> **RAM:** \`${freeMem} GB free / ${totalMem} GB total\``, 
                     inline: false 
                 },
                 { 
                     name: '🐧 Platform & Kernel', 
-                    value: `> **OS:** \`${osName} (${os.arch()})\`\n> **Kernel:** \`${kernelVersion}\``, 
+                    value: `> **OS:** \`${osName} (${os.arch()})\`\n> **Kernel:** \`${kernelVersion}\`\n> **Host Server Uptime:** \`${serverUptimeStr}\``, 
                     inline: false 
                 }
             ])

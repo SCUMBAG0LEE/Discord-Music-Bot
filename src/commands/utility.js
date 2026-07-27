@@ -79,82 +79,18 @@ export class DebugCommand extends Command {
 
         const uptime = formatDuration(Math.floor(process.uptime()));
         const memUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
-        const runtime = typeof Bun !== 'undefined' ? `Bun v${Bun.version}` : `Node ${process.version}`;
+        let runtimeName = 'Node.js';
+        if (typeof Bun !== 'undefined') runtimeName = 'Bun';
+        else if (typeof Deno !== 'undefined') runtimeName = 'Deno';
 
         let debugInfo = `**Bot Status:**\n`;
-        debugInfo += `> **Shard ID:** \`${ctx.shardId}\`\n`;
-        debugInfo += `> **Uptime:** \`${uptime}\`\n`;
-        debugInfo += `> **Memory:** \`${memUsage} MB\`\n`;
-        debugInfo += `> **Runtime:** \`${runtime}\` (${os.platform()} ${os.arch()})\n`;
-        debugInfo += `> **Gateway Ping:** \`${ctx.client.gateway.latency}ms\`\n\n`;
-
-        let ytdlpVersion = 'Error/Not Found';
-        const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
-        try {
-            const { stdout } = await execFileAsync(ytdlpPath, ['--version']);
-            ytdlpVersion = stdout.trim();
-        } catch(e) {}
-
-        debugInfo += `**Music Engine:**\n`;
-        debugInfo += `> **FFmpeg:** \`v${ffmpegInfo.version}\` (${ffmpegInfo.type})\n`;
-        debugInfo += `> **Path:** \`${ffmpegInfo.path}\`\n`;
-        debugInfo += `> **yt-dlp:** \`v${ytdlpVersion}\`\n`;
-        debugInfo += `> **Path:** \`${ytdlpPath}\`\n\n`;
-
-        const hasCookies = fs.existsSync(path.join(process.cwd(), 'cookies.txt')) || fs.existsSync(path.join(process.cwd(), 'youtube-cookies.txt')) || !!process.env.YOUTUBE_COOKIES;
-        let pluginStatus = 'Not Installed';
-        const pipCommands = [
-            process.env.YTDLP_PATH ? [process.env.YTDLP_PATH.replace('yt-dlp', 'pip'), ['show', 'yt-dlp-getpot-wpc']] : null,
-            ['pip', ['show', 'yt-dlp-getpot-wpc']],
-            ['pip3', ['show', 'yt-dlp-getpot-wpc']],
-            ['python3', ['-m', 'pip', 'show', 'yt-dlp-getpot-wpc']],
-            ['python', ['-m', 'pip', 'show', 'yt-dlp-getpot-wpc']]
-        ].filter(Boolean);
-
-        for (const [cmd, args] of pipCommands) {
-            try {
-                const { stdout } = await execFileAsync(cmd, args);
-                if (stdout.includes('Version:')) {
-                    pluginStatus = 'Active';
-                    break;
-                }
-            } catch (e) {}
-        }
-
-        debugInfo += `**YouTube Bypasses:**\n`;
-        debugInfo += `> **Cookies:** \`${hasCookies ? 'Loaded' : 'None'}\`\n`;
-        debugInfo += `> **User-Agent:** \`${process.env.YOUTUBE_USER_AGENT ? 'Custom' : 'Default'}\`\n`;
-        debugInfo += `> **PoToken Plugin:** \`${pluginStatus}\`\n`;
-
-        const proxyUrl = process.env.YOUTUBE_PROXY;
-        if (proxyUrl) {
-            const isSocks = proxyUrl.toLowerCase().startsWith('socks');
-            const proxyType = isSocks ? 'SOCKS5' : 'HTTP';
-            const streamMode = isSocks ? 'Download-to-file (FFmpeg cannot use SOCKS)' : 'Direct stream via FFmpeg';
-            debugInfo += `> **Proxy:** \`${proxyType}\` → \`${streamMode}\`\n`;
-        } else {
-            debugInfo += `> **Proxy:** \`None\`\n`;
-        }
-        debugInfo += `\n`;
-
-        const dbEngine = (process.env.CLOUDFLARE_D1_TOKEN && process.env.CLOUDFLARE_D1_DATABASE_ID) 
-            ? 'Cloudflare D1 (Serverless SQLite)' 
-            : 'Local bun:sqlite (WAL Mode)';
-
-        debugInfo += `**Storage & Hardware:**\n`;
-        debugInfo += `> **Database Engine:** \`${dbEngine}\`\n`;
-        debugInfo += `> **Threads:** \`${hardwareOptimization.threads}\`\n`;
-        debugInfo += `> **Buffer:** \`${hardwareOptimization.bufferSizeMB} MB\`\n`;
-        debugInfo += `> **Disk Type:** \`${hardwareOptimization.diskType.toUpperCase()}\`\n\n`;
+        debugInfo += `> **Runtime:** \`${runtimeName}\` (${os.arch()})\n`;
+        debugInfo += `> **Bot Uptime:** \`${uptime}\` | **Memory:** \`${memUsage} MB\`\n\n`;
 
         if (queue && connection) {
-            debugInfo += `**Voice Connection:** ${connection.state.status}\n`;
-            debugInfo += `**Audio Player:** ${queue.player.state.status}\n`;
-            debugInfo += `**Queue Length:** ${queue.songs.length}\n`;
-            debugInfo += `**Now Playing:** ${queue.playing ? 'Yes' : 'No'}\n`;
-            debugInfo += `**Paused:** ${queue.paused ? 'Yes' : 'No'}\n`;
-            debugInfo += `**Process Stream:** ${queue.ytdlpProcess ? 'Active' : 'None'}\n`;
-            debugInfo += `**Resource:** ${queue.resource ? 'Active' : 'None'}\n`;
+            debugInfo += `**Voice Connection & Player:**\n`;
+            debugInfo += `> **Connection:** \`${connection.state.status}\` | **Player:** \`${queue.player.state.status}\`\n`;
+            debugInfo += `> **Queue Length:** \`${queue.songs.length}\` | **Playing:** \`${queue.playing ? 'Yes' : 'No'}\` | **Paused:** \`${queue.paused ? 'Yes' : 'No'}\`\n`;
 
             const currentSong = queue.songs[0];
             if (currentSong && currentSong._ytDlpData) {
@@ -167,6 +103,7 @@ export class DebugCommand extends Command {
                 const targetProtocol = (currentSong.sourceType === 'radio' || currentSong.isRadio) ? 'HTTP Stream' : 'HTTPS/QUIC';
                 
                 // Proxy Route
+                const proxyUrl = process.env.YOUTUBE_PROXY || '';
                 const proxyScheme = proxyUrl ? (proxyUrl.includes('://') ? proxyUrl.split('://')[0].toUpperCase() : 'PROXY') : '';
                 const proxyLabel = proxyUrl ? `${proxyScheme} Proxy` : 'Direct (No Proxy)';
 
