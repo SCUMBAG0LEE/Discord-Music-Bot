@@ -878,6 +878,14 @@ export class MusicManager {
         connection.subscribe(player);
 
         player.on(AudioPlayerStatus.Idle, async () => {
+            // Guard against duplicate/spurious Idle events (e.g. FFmpeg EOF + AudioPlayer transition)
+            const now = Date.now();
+            if (queue.lastIdleTime && (now - queue.lastIdleTime) < 500) {
+                logger.debug('AudioPlayer', `Ignoring duplicate Idle event (${now - queue.lastIdleTime}ms since last)`);
+                return;
+            }
+            queue.lastIdleTime = now;
+
             if (queue.ytdlpProcess) {
                 if (typeof queue.ytdlpProcess.destroy === 'function') queue.ytdlpProcess.destroy();
                 if (queue.ytdlpProcess.process && typeof queue.ytdlpProcess.process.kill === 'function') queue.ytdlpProcess.process.kill();

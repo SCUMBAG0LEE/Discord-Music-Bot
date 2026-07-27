@@ -59,57 +59,92 @@ client.start().then(async () => {
         logger.info('Bot', 'Skipping command upload (SKIP_COMMAND_UPLOAD=true)');
     }
 
+    // In-memory real-time voice state tracker: Map<guildId, Map<userId, channelId>>
+    const activeVoiceMembers = new Map();
+
     // Inject Raw Payload Interceptor for @discordjs/voice
     const originalHandlePayload = client.gateway.options.handlePayload;
     const wrapper = (shardId, packet) => {
         if (packet.t === 'VOICE_STATE_UPDATE') {
             const adapter = voiceAdapters.get(packet.d.guild_id);
             const botId = client.botId || client.me?.id;
+            const { guild_id, user_id, channel_id } = packet.d;
+
+            // Track voice state in real time directly from gateway payload
+            if (guild_id && user_id) {
+                if (!activeVoiceMembers.has(guild_id)) {
+                    activeVoiceMembers.set(guild_id, new Map());
+                }
+                const guildMembers = activeVoiceMembers.get(guild_id);
+                if (channel_id) {
+                    guildMembers.set(user_id, channel_id);
+                } else {
+                    guildMembers.delete(user_id);
+                }
+            }
             
-            if (packet.d.user_id === botId) {
+            if (user_id === botId) {
                 if (adapter) adapter.onVoiceStateUpdate(packet.d);
-                const queue = musicManager.getQueue(packet.d.guild_id);
+                const queue = musicManager.getQueue(guild_id);
                 if (queue) {
-                    if (packet.d.channel_id) {
-                        queue.voiceChannelId = packet.d.channel_id;
+                    if (channel_id) {
+                        queue.voiceChannelId = channel_id;
                     } else {
                         // Admin manually disconnected the bot from Discord UI
-                        logger.info('Voice', `Bot was disconnected from VC by admin in guild ${packet.d.guild_id}`);
+                        logger.info('Voice', `Bot was disconnected from VC by admin in guild ${guild_id}`);
                         if (queue.emptyVcTimeout) clearTimeout(queue.emptyVcTimeout);
-                        musicManager.leave(packet.d.guild_id);
+                        musicManager.leave(guild_id);
                     }
                 }
             }
             
             // Check if VC is empty when a user leaves or moves
-            if (packet.d.user_id !== botId) {
-                const queue = musicManager.getQueue(packet.d.guild_id);
+            if (user_id !== botId) {
+                const queue = musicManager.getQueue(guild_id);
                 if (queue && queue.voiceChannelId) {
-                    if (queue.emptyVcTimeout) {
-                        clearTimeout(queue.emptyVcTimeout);
-                        queue.emptyVcTimeout = null;
+                    const guildMembers = activeVoiceMembers.get(guild_id);
+                    let currentMembersInVc = 0;
+                    if (guildMembers) {
+                        for (const [uId, cId] of guildMembers.entries()) {
+                            if (cId === queue.voiceChannelId && uId !== botId) {
+                                currentMembersInVc++;
+                            }
+                        }
                     }
 
-                    queue.emptyVcTimeout = setTimeout(async () => {
-                        try {
-                            const cachedStates = await client.cache.voiceStates?.values(packet.d.guild_id);
-                            if (cachedStates) {
+                    if (currentMembersInVc > 0) {
+                        // Human members are present — cancel any pending disconnect timer immediately
+                        if (queue.emptyVcTimeout) {
+                            clearTimeout(queue.emptyVcTimeout);
+                            queue.emptyVcTimeout = null;
+                        }
+                    } else {
+                        // Voice channel is completely empty — start 15-second disconnect timer
+                        if (queue.emptyVcTimeout) {
+                            clearTimeout(queue.emptyVcTimeout);
+                        }
+
+                        queue.emptyVcTimeout = setTimeout(async () => {
+                            try {
+                                const latestGuildMembers = activeVoiceMembers.get(guild_id);
                                 let membersInVc = 0;
-                                for (const state of cachedStates) {
-                                    if (state.channelId === queue.voiceChannelId && state.userId !== botId) {
-                                        membersInVc++;
+                                if (latestGuildMembers) {
+                                    for (const [uId, cId] of latestGuildMembers.entries()) {
+                                        if (cId === queue.voiceChannelId && uId !== botId) {
+                                            membersInVc++;
+                                        }
                                     }
                                 }
-                                
+
                                 if (membersInVc === 0 && !queue.stay247) {
                                     await musicManager.sendMessage(queue, { content: '👋 Everyone left the voice channel! Stopping music to save resources...' });
-                                    musicManager.leave(packet.d.guild_id);
+                                    musicManager.leave(guild_id);
                                 }
+                            } catch (e) {
+                                logger.error('VoiceCheck', 'Alone Check Error', e);
                             }
-                        } catch (e) {
-                            logger.error('VoiceCheck', 'Alone Check Error', e);
-                        }
-                    }, 15000); // 15-second buffer to allow channel switching and quick reconnects
+                        }, 15000); // 15-second buffer to allow channel switching and quick reconnects
+                    }
                 }
             }
         } else if (packet.t === 'VOICE_SERVER_UPDATE') {
