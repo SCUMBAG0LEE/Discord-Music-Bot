@@ -7,6 +7,14 @@ const options = {
     query: createStringOption({
         description: 'URL or search term for the song to play next',
         required: true
+    }),
+    platform: createStringOption({
+        description: 'Platform search engine if not using a URL (default: YouTube)',
+        required: false,
+        choices: [
+            { name: '🔴 YouTube', value: 'youtube' },
+            { name: '🟠 SoundCloud', value: 'soundcloud' }
+        ]
     })
 };
 
@@ -17,7 +25,7 @@ const options = {
 @Options(options)
 export default class PlayNextCommand extends Command {
     async run(ctx) {
-        const { query } = ctx.options;
+        const { query, platform } = ctx.options;
         const queue = musicManager.getQueue(ctx.guildId);
         const voiceChannelId = await verifyVoiceConnection(ctx, queue, true);
         if (!voiceChannelId) return;
@@ -31,8 +39,9 @@ export default class PlayNextCommand extends Command {
         
         try {
             const channel = { id: voiceChannelId, guildId: ctx.guildId, client: ctx.client };
+            const searchPrefix = platform === 'soundcloud' ? 'scsearch1:' : 'ytsearch1:';
             
-            await musicManager.playNextSong(channel, query, ctx);
+            await musicManager.playNextSong(channel, query, ctx, searchPrefix);
         } catch (e) {
             return ctx.editOrReply({ content: `❌ Error: ${e.message}` });
         }

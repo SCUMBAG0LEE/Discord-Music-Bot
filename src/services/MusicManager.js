@@ -521,7 +521,7 @@ async function getTrackInfo(query, searchPrefix = '') {
                 if (res.ok) {
                     const data = await res.json();
                     if (data.title && data.artist?.name) {
-                        query = `ytsearch1:${data.title} ${data.artist.name}`;
+                        query = `${searchPrefix}${data.title} ${data.artist.name}`;
                     }
                 }
             } catch (e) {
@@ -556,7 +556,7 @@ async function getTrackInfo(query, searchPrefix = '') {
                     const data = await res.json();
                     if (data.data && data.data[0]) {
                         const attrs = data.data[0].attributes;
-                        query = `ytsearch1:${attrs.name} ${attrs.artistName}`;
+                        query = `${searchPrefix}${attrs.name} ${attrs.artistName}`;
                     }
                 }
             }
@@ -920,7 +920,7 @@ export class MusicManager {
         }
     }
 
-    async play(channel, query, textChannel) {
+    async play(channel, query, textChannel, searchPrefix = 'ytsearch1:') {
         let guildId = channel.guildId;
         
         let resolvedQuery = query;
@@ -960,7 +960,7 @@ export class MusicManager {
         // Search or get track info
         let trackInfo;
         try {
-            trackInfo = await getTrackInfo(resolvedQuery, 'ytsearch1:');
+            trackInfo = await getTrackInfo(resolvedQuery, searchPrefix);
             
             // Limit checks
             const maxDuration = parseInt(process.env.MAX_DURATION) || 0;
@@ -1533,12 +1533,12 @@ export class MusicManager {
         }
     }
 
-    async forcePlay(channel, query, textChannel) {
+    async forcePlay(channel, query, textChannel, searchPrefix = 'ytsearch1:') {
         const guildId = channel.guildId;
         const queue = this.getQueue(guildId);
         
         if (!queue) {
-            return this.play(channel, query, textChannel);
+            return this.play(channel, query, textChannel, searchPrefix);
         }
         
         let resolvedQuery = query;
@@ -1586,7 +1586,7 @@ export class MusicManager {
             return;
         }
         
-        const trackInfo = await getTrackInfo(resolvedQuery, 'ytsearch1:');
+        const trackInfo = await getTrackInfo(resolvedQuery, searchPrefix);
         const song = {
             title: trackInfo.title,
             originalUrl: trackInfo.originalUrl,
@@ -1609,12 +1609,12 @@ export class MusicManager {
         }
     }
 
-    async playNextSong(channel, query, textChannel) {
+    async playNextSong(channel, query, textChannel, searchPrefix = 'ytsearch1:') {
         const guildId = channel.guildId;
         const queue = this.getQueue(guildId);
         
         if (!queue) {
-            return this.play(channel, query, textChannel);
+            return this.play(channel, query, textChannel, searchPrefix);
         }
         
         let resolvedQuery = query;
@@ -1659,7 +1659,7 @@ export class MusicManager {
             return;
         }
         
-        const trackInfo = await getTrackInfo(resolvedQuery, 'ytsearch1:');
+        const trackInfo = await getTrackInfo(resolvedQuery, searchPrefix);
         const song = {
             title: trackInfo.title,
             originalUrl: trackInfo.originalUrl,

@@ -8,6 +8,14 @@ const searchOptions = {
     query: createStringOption({
         description: 'What do you want to search for?',
         required: true
+    }),
+    platform: createStringOption({
+        description: 'Platform to search on (default: YouTube)',
+        required: false,
+        choices: [
+            { name: '🔴 YouTube', value: 'youtube' },
+            { name: '🟠 SoundCloud', value: 'soundcloud' }
+        ]
     })
 };
 
@@ -19,6 +27,7 @@ const searchOptions = {
 export default class SearchCommand extends Command {
     async run(ctx) {
         const query = ctx.options.query;
+        const platform = ctx.options.platform || 'youtube';
         const queue = musicManager.getQueue(ctx.guildId);
         const voiceChannelId = await verifyVoiceConnection(ctx, queue, true);
         if (!voiceChannelId) return;
@@ -32,9 +41,10 @@ export default class SearchCommand extends Command {
         
         try {
             const ytdlpPath = process.env.YTDLP_PATH || 'yt-dlp';
+            const searchPrefix = platform === 'soundcloud' ? 'scsearch10:' : 'ytsearch10:';
             
             // Use --flat-playlist so yt-dlp only fetches basic metadata (instantly) instead of the entire formats array
-            const args = getYtDlpArgs(['-j', '--flat-playlist', '--socket-timeout', '15', '--no-warnings', `ytsearch10:${query}`]);
+            const args = getYtDlpArgs(['-j', '--flat-playlist', '--socket-timeout', '15', '--no-warnings', `${searchPrefix}${query}`]);
             
             // Search 10 results and output JSON with increased maxBuffer
             const { stdout } = await execFileAsync(ytdlpPath, args, { maxBuffer: 1024 * 1024 * 10 });
@@ -55,9 +65,12 @@ export default class SearchCommand extends Command {
                 return ctx.editOrReply({ content: '❌ No results found.' });
             }
             
+            const platformName = platform === 'soundcloud' ? 'SoundCloud' : 'YouTube';
+            const embedColor = platform === 'soundcloud' ? '#FF5500' : '#FF0000';
+            
             const embed = new Embed()
-                .setTitle(`Search Results for: ${query}`)
-                .setColor('#FF0000');
+                .setTitle(`Search Results (${platformName}): ${query}`)
+                .setColor(embedColor);
                 
             let description = '**Select a song from the dropdown menu below:**\n\n';
             results.slice(0, 10).forEach((res, i) => {
@@ -67,7 +80,7 @@ export default class SearchCommand extends Command {
             });
             
             embed.setDescription(description);
-            embed.setFooter({ text: 'YouTube Search Results' });
+            embed.setFooter({ text: `${platformName} Search Results` });
             
             const selectMenu = new StringSelectMenu()
                 .setCustomId('search_select')
