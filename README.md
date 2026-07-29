@@ -215,7 +215,7 @@ This bot uses **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** for YouTube support
 |---------|-------------|
 | `/pause` | Pause playback |
 | `/resume` | Resume playback |
-| `/stop` | Stop and disconnect |
+| `/disconnect` / `/leave` / `/dc` | Disconnect bot, stop playback, and clear queue (alias `/stop`) |
 | `/seek <timestamp>` | Jump to position (e.g., `1:30`, `90`) |
 | `/replay` | Restart current song |
 | `/previous` | Play the previous song |

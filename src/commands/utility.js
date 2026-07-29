@@ -179,7 +179,7 @@ export class HelpCommand extends Command {
                 fields: [
                     { name: '`/pause`', value: 'Pause current audio playback.' },
                     { name: '`/resume`', value: 'Resume paused audio playback.' },
-                    { name: '`/stop`', value: 'Stop playback, clear queue, and leave voice channel.' },
+                    { name: '`/disconnect` / `/leave` / `/dc` / `/stop`', value: 'Disconnect bot from voice channel, stop playback, and clear queue.' },
                     { name: '`/seek <timestamp>`', value: 'Seek to a specific timestamp in the current song (e.g. `1:30`, `90`).' },
                     { name: '`/replay`', value: 'Restart the currently playing song from the beginning.' },
                     { name: '`/previous`', value: 'Play the previously played song from history.' }
