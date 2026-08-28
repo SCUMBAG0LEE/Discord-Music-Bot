@@ -1,4 +1,5 @@
 import { Client } from 'seyfert';
+import * as davey from '@snazzah/davey';
 import { logger } from './utils/logger.js';
 import { musicManager, voiceAdapters } from './services/MusicManager.js';
 import dns from 'dns';

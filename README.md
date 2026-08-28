@@ -120,7 +120,6 @@ To run the bot locally on your machine:
    ```bash
    bun install
    ```
-   *(On ARM64 architecture like Oracle Cloud ARM, if `@discordjs/opus` build fails, pass ARM NEON flags: `CFLAGS="-DOPUS_ARM_MAY_HAVE_NEON=0 -DOPUS_ARM_HAVE_NEON_INTR=0" CXXFLAGS="-DOPUS_ARM_MAY_HAVE_NEON=0 -DOPUS_ARM_HAVE_NEON_INTR=0" bun install`)*
 
 3. **Configure environment**
    ```bash
@@ -361,15 +360,6 @@ bun run dev
 - `/setdjrole` to configure who can use DJ commands
 - Administrators always have DJ permissions
 - Song requesters can skip their own songs
-
-### `@discordjs/opus` compilation failure on ARM64 architecture
-If `@discordjs/opus` fails to compile from source on ARM64 servers (such as Oracle Cloud ARM instances or Node v24) due to libopus ARM NEON compilation bugs (`celt_inner_prod_neon`), pass compiler environment flags to disable ARM NEON during build:
-
-```bash
-CFLAGS="-DOPUS_ARM_MAY_HAVE_NEON=0 -DOPUS_ARM_HAVE_NEON_INTR=0" \
-CXXFLAGS="-DOPUS_ARM_MAY_HAVE_NEON=0 -DOPUS_ARM_HAVE_NEON_INTR=0" \
-bun install
-```
 
 ## 📄 License
 
