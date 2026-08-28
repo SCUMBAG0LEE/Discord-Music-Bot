@@ -402,6 +402,14 @@ export class SystemInfoCommand extends Command {
     async run(ctx) {
         if (!isOwner(ctx.member.id)) return ownerOnlyError(ctx);
 
+        // Acknowledge interaction immediately to prevent Discord 3-second timeout (10062)
+        try {
+            await ctx.deferReply({ flags: 64 });
+        } catch (e) {
+            logger.warn('SystemInfoCommand', `Failed to defer interaction: ${e.message || e}`);
+            return;
+        }
+
         // Fetch static specs from cache (0ms)
         const staticSpecs = await getStaticSystemSpecs();
 
@@ -476,7 +484,7 @@ export class SystemInfoCommand extends Command {
 
         const { ipv4, ipv6, rawProxy, proxyStr, proxyOutboundIpv4, proxyOutboundIpv6 } = networkIpCache;
 
-        // Cookie diagnostics (inspected live so new cookie files show up immediately)
+        // Cookie diagnostics
         let cookieStatus = 'Not Loaded';
         try {
             if (process.env.YOUTUBE_COOKIES) {
@@ -561,7 +569,7 @@ export class SystemInfoCommand extends Command {
             ])
             .setTimestamp();
 
-        return ctx.write({ embeds: [embed], flags: 64 });
+        return ctx.editOrReply({ embeds: [embed] });
     }
 }
 
