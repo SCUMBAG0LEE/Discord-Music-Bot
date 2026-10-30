@@ -3,11 +3,11 @@
   "version": "5.4.0",
   "type": "module",
   "description": "A feature-rich, high-performance Discord music bot using Seyfert + yt-dlp",
-  "main": "src/index.js",
+  "main": "src/index.ts",
   "scripts": {
-    "start": "bun src/index.js",
-    "dev": "bun --watch src/index.js",
-    "debug": "LOG_LEVEL=DEBUG bun src/index.js"
+    "dev": "bun --watch src/index.ts",
+    "debug": "LOG_LEVEL=DEBUG bun src/index.ts",
+    "typecheck": "bun x tsc --noEmit"
   },
   "engines": {
     "bun": ">=1.0.0"
@@ -18,6 +18,10 @@
     "ffmpeg-static": "latest",
     "seyfert": "latest",
     "sodium-native": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
   },
   "keywords": [
     "discord",

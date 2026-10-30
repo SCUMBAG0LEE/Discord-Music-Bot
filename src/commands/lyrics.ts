@@ -1,0 +1,353 @@
+import { Command, Declare, Options, createStringOption, Embed, type CommandContext } from 'seyfert';
+import { musicManager } from '../services/MusicManager.js';
+import dns from 'dns';
+import { logger } from '../utils/logger.js';
+import { verifyTextChannel } from '../utils/permissions.js';
+
+async function resolveDoH(hostname: string): Promise<string> {
+    const tryDoH = async (url: string): Promise<string> => {
+        const res = await fetch(url, {
+            headers: { Accept: 'application/dns-json' },
+            signal: AbortSignal.timeout(5000)
+        });
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+        const json = (await res.json()) as any;
+        if (json.Answer && json.Answer.length > 0) {
+            const aRecord = json.Answer.find((a: any) => a.type === 1);
+            if (aRecord) return aRecord.data;
+        }
+        throw new Error('No valid A record');
+    };
+
+    try {
+        logger.debug('DNS', `Resolving ${hostname} via Cloudflare DoH`);
+        const ip = await tryDoH(`https://cloudflare-dns.com/dns-query?name=${hostname}&type=A`);
+        logger.debug('DNS', `Resolved ${hostname} to ${ip} via Cloudflare DoH`);
+        return ip;
+    } catch (err: any) {
+        logger.debug('DNS', `Cloudflare DoH failed for ${hostname}: ${err.message || err}`);
+        try {
+            logger.debug('DNS', `Resolving ${hostname} via Google DoH`);
+            const ip = await tryDoH(`https://dns.google/resolve?name=${hostname}&type=A`);
+            logger.debug('DNS', `Resolved ${hostname} to ${ip} via Google DoH`);
+            return ip;
+        } catch (err2: any) {
+            logger.debug('DNS', `Google DoH failed for ${hostname}: ${err2.message || err2}`);
+            try {
+                logger.debug('DNS', `Resolving ${hostname} via direct DNS resolver (1.1.1.1 / 8.8.8.8)`);
+                const resolver = new dns.promises.Resolver();
+                resolver.setServers(['1.1.1.1', '8.8.8.8', '1.0.0.1', '8.8.4.4']);
+                const addresses = await resolver.resolve4(hostname);
+                if (addresses && addresses.length > 0) {
+                    const ip = addresses[0];
+                    logger.debug('DNS', `Resolved ${hostname} to ${ip} via direct DNS resolver`);
+                    return ip;
+                }
+                throw new Error('No addresses found');
+            } catch (err3: any) {
+                logger.debug('DNS', `Direct DNS resolver failed for ${hostname}: ${err3.message || err3}`);
+                logger.debug('DNS', `Resolving ${hostname} via system default resolver`);
+                const addresses = await dns.promises.resolve4(hostname);
+                if (addresses && addresses.length > 0) {
+                    const ip = addresses[0];
+                    logger.debug('DNS', `Resolved ${hostname} to ${ip} via system default resolver`);
+                    return ip;
+                }
+                throw new Error(`Failed to resolve ${hostname} via all methods`);
+            }
+        }
+    }
+}
+
+function cleanTitle(title?: string, author?: string): string {
+    if (!title) return '';
+    let clean = title
+        .replace(/\s*[\[\(].*?(official|video|audio|lyrics|hd|hq|4k|1080p|720p|visualizer|mv|m\/v).*?[\]\)]/gi, '')
+        .replace(/\s*[\[\(].*?(ft\.?|feat\.?|featuring).*?[\]\)]/gi, '')
+        .replace(/\s*-\s*(official|video|audio|lyrics|hd|hq).*/gi, '')
+        .replace(/\s*\|\s*.*/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (author && !clean.toLowerCase().includes(author.toLowerCase())) {
+        clean = `${clean} - ${author}`;
+    }
+    return clean;
+}
+
+async function fetchJson(urlString: string): Promise<{ ok: boolean; status?: number; data?: any }> {
+    const parsedUrl = new URL(urlString);
+
+    const makeRequest = async (urlStr: string, ip: string | null = null) => {
+        const fetchUrl = ip ? urlStr.replace(parsedUrl.hostname, ip) : urlStr;
+
+        const headers: Record<string, string> = {
+            'User-Agent': 'SeyfertMusicBot/1.0 (Discord Bot)',
+            Accept: 'application/json'
+        };
+
+        if (ip) {
+            headers['Host'] = parsedUrl.hostname;
+        }
+
+        const options: any = {
+            method: 'GET',
+            headers,
+            signal: AbortSignal.timeout(15000)
+        };
+
+        if (ip) {
+            options.tls = {
+                serverName: parsedUrl.hostname
+            };
+        }
+
+        const res = await fetch(fetchUrl, options);
+        if (!res.ok) {
+            return { ok: false, status: res.status };
+        }
+
+        const data = await res.json();
+        return { ok: true, data };
+    };
+
+    try {
+        const ip = await resolveDoH(parsedUrl.hostname);
+        if (ip) {
+            logger.debug('HTTP', `Attempting native fetch to resolved IP: ${ip} for ${parsedUrl.hostname}`);
+            return await makeRequest(urlString, ip);
+        }
+    } catch (err: any) {
+        logger.debug('HTTP', `Native fetch to IP-resolved host failed for ${parsedUrl.hostname}: ${err.message || err}`);
+    }
+
+    try {
+        logger.debug('HTTP', `Falling back to direct native fetch for ${parsedUrl.hostname}`);
+        return await makeRequest(urlString);
+    } catch (err: any) {
+        logger.error('HTTP', `Direct native fetch failed for ${parsedUrl.hostname}: ${err.message || err}`);
+        throw err;
+    }
+}
+
+const lyricsOptions = {
+    query: createStringOption({
+        description: 'Song to search for (leave empty for current)',
+        required: false
+    })
+};
+
+@Declare({
+    name: 'lyrics',
+    description: 'Get lyrics for the current or specified song'
+})
+@Options(lyricsOptions)
+export default class LyricsCommand extends Command {
+    async run(ctx: CommandContext<typeof lyricsOptions>): Promise<any> {
+        if (!(await verifyTextChannel(ctx))) return;
+
+        try {
+            await ctx.deferReply();
+        } catch (e: any) {
+            logger.warn('Lyrics', `Failed to defer interaction: ${e.message || e}`);
+            return;
+        }
+
+        const queue = ctx.guildId ? musicManager.getQueue(ctx.guildId) : undefined;
+        const query = ctx.options.query;
+
+        let searchTerm: string;
+        if (query) {
+            searchTerm = query;
+        } else if (queue && queue.songs.length > 0) {
+            const song = queue.songs[0];
+            searchTerm = cleanTitle(song.title, song.uploader?.name);
+        } else {
+            return ctx.editOrReply({ content: '❌ Nothing is playing. Specify a song to search for.' });
+        }
+
+        try {
+            let artist: string | null = null;
+            let songName = searchTerm;
+            if (searchTerm.includes('-') || searchTerm.includes('–')) {
+                const parts = searchTerm.split(/\s*[-–]\s*/);
+                songName = parts[0];
+                artist = parts.slice(1).join(' - ');
+            }
+
+            let lyrics: string | null = null;
+            let source = 'API';
+            const trackInfo: {
+                title: string | null;
+                artist: string | null;
+                album: string | null;
+                url: string | null;
+            } = {
+                title: null,
+                artist: null,
+                album: null,
+                url: null
+            };
+
+            if (!lyrics) {
+                try {
+                    logger.debug('LRCLIB', `Searching q=${searchTerm}`);
+                    const response = await fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(searchTerm)}`);
+                    if (response.ok) {
+                        const data = response.data;
+                        if (Array.isArray(data) && data.length > 0) {
+                            const validMatch = data.find((track: any) => track.plainLyrics);
+                            if (validMatch) {
+                                lyrics = validMatch.plainLyrics;
+                                source = 'LRCLIB';
+                                trackInfo.title = validMatch.name;
+                                trackInfo.artist = validMatch.artistName;
+                                trackInfo.album = validMatch.albumName;
+                            }
+                        }
+                    }
+                } catch (e: any) {
+                    logger.error('LRCLIB', `q search error: ${e.message || e}`);
+                }
+            }
+
+            if (!lyrics && artist && songName) {
+                try {
+                    logger.debug('LRCLIB', `Searching track=${songName} artist=${artist}`);
+                    const response = await fetchJson(
+                        `https://lrclib.net/api/search?track_name=${encodeURIComponent(songName)}&artist_name=${encodeURIComponent(artist)}`
+                    );
+                    if (response.ok) {
+                        const data = response.data;
+                        if (Array.isArray(data) && data.length > 0) {
+                            const validMatch = data.find((track: any) => track.plainLyrics);
+                            if (validMatch) {
+                                lyrics = validMatch.plainLyrics;
+                                source = 'LRCLIB';
+                                trackInfo.title = validMatch.name;
+                                trackInfo.artist = validMatch.artistName;
+                                trackInfo.album = validMatch.albumName;
+                            }
+                        }
+                    }
+                } catch (e: any) {
+                    logger.error('LRCLIB', `track/artist search error: ${e.message || e}`);
+                }
+            }
+
+            if (!lyrics) {
+                try {
+                    logger.debug('Lyrics', `Searching some-random-api title=${searchTerm}`);
+                    const response = await fetchJson(
+                        `https://some-random-api.com/lyrics?title=${encodeURIComponent(searchTerm)}`
+                    );
+                    if (response.ok) {
+                        const data = response.data;
+                        if (data.lyrics) {
+                            lyrics = data.lyrics;
+                            source = 'some-random-api.com';
+                            trackInfo.title = data.title;
+                            trackInfo.artist = data.author;
+                            trackInfo.url = data.links?.genius;
+                        }
+                    }
+                } catch (e: any) {
+                    logger.error('Lyrics', `some-random-api search error: ${e.message || e}`);
+                }
+            }
+
+            if (!lyrics && artist && songName) {
+                try {
+                    logger.debug('Lyrics', `Searching lyrics.ovh artist=${artist} song=${songName}`);
+                    const response = await fetchJson(
+                        `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(songName)}`
+                    );
+                    if (response.ok) {
+                        const data = response.data;
+                        if (data.lyrics) {
+                            lyrics = data.lyrics;
+                            source = 'lyrics.ovh';
+                            trackInfo.title = songName;
+                            trackInfo.artist = artist;
+                        }
+                    }
+                } catch (e: any) {
+                    logger.error('Lyrics', `lyrics.ovh search error: ${e.message || e}`);
+                }
+            }
+
+            if (!lyrics) {
+                return ctx.editOrReply({
+                    content: `❌ No lyrics found for **${searchTerm}**\n\nTry using the format: \`Artist - Song Title\``
+                });
+            }
+
+            lyrics = lyrics.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+
+            const maxLength = 3800;
+            const chunks: string[] = [];
+
+            if (lyrics.length <= maxLength) {
+                chunks.push(lyrics);
+            } else {
+                const paragraphs = lyrics.split(/\n\n+/);
+                let currentChunk = '';
+                for (const para of paragraphs) {
+                    if ((currentChunk + '\n\n' + para).length > maxLength) {
+                        if (currentChunk) chunks.push(currentChunk.trim());
+                        currentChunk = para;
+                    } else {
+                        currentChunk += (currentChunk ? '\n\n' : '') + para;
+                    }
+                }
+                if (currentChunk) chunks.push(currentChunk.trim());
+            }
+
+            const embeds = chunks.map((chunk, i) => {
+                const embed = new Embed().setColor('#5865F2').setDescription(chunk);
+
+                if (i === 0) {
+                    let titleString = `📜 Lyrics: ${searchTerm.slice(0, 200)}`;
+                    if (trackInfo.title && trackInfo.artist) {
+                        titleString = `📜 Lyrics: ${trackInfo.title} - ${trackInfo.artist}`;
+                    }
+                    embed.setTitle(titleString);
+
+                    const metadata: string[] = [];
+                    if (trackInfo.title) metadata.push(`**Track:** ${trackInfo.title}`);
+                    if (trackInfo.artist) metadata.push(`**Artist:** ${trackInfo.artist}`);
+                    if (trackInfo.album) metadata.push(`**Album:** ${trackInfo.album}`);
+
+                    const finalUrl =
+                        trackInfo.url ||
+                        `https://genius.com/search?q=${encodeURIComponent(
+                            (trackInfo.title || searchTerm) + ' ' + (trackInfo.artist || '')
+                        )}`;
+                    metadata.push(`**Genius Link:** [Search](${finalUrl})`);
+
+                    embed.setDescription(`${metadata.join('\n')}\n\n${chunk}`);
+                }
+                if (i === chunks.length - 1) {
+                    embed.setFooter({ text: `Source: ${source} • Tip: /lyrics "Song - Artist" for better results` });
+                }
+                return embed;
+            });
+
+            await ctx.editOrReply({ embeds: [embeds[0]] });
+
+            for (let i = 1; i < embeds.length && i < 3; i++) {
+                await ctx.client.messages.write(ctx.channelId, { embeds: [embeds[i]] });
+            }
+
+            if (embeds.length > 3) {
+                await ctx.client.messages.write(ctx.channelId, {
+                    content: `*...lyrics truncated (${embeds.length - 3} more pages)*`
+                });
+            }
+        } catch (error: any) {
+            return ctx.editOrReply({ content: `❌ Failed to fetch lyrics: ${error.message}` });
+        }
+    }
+}
+

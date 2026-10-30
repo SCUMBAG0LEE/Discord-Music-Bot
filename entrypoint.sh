@@ -2,4 +2,4 @@
 set -e
 
 echo "🚀 Launching Discord Bot..."
-exec bun src/index.js
+exec bun src/index.ts

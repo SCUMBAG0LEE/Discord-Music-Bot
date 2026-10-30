@@ -47,36 +47,41 @@ A feature-rich, ultra-high-performance Discord music bot with **YouTube, Spotify
 
 ```
 src/
-├── index.js                 # Entry point & Seyfert client initialization
+├── index.ts                 # Entry point & Seyfert client initialization
+├── types.ts                 # TypeScript interfaces & Seyfert module augmentation
 ├── commands/
-│   ├── admin.js             # Server-specific admin commands (/settc, /setvc, /setdjrole, etc.)
-│   ├── advanced.js          # /seek, /previous, /replay, /radio
-│   ├── favorites.js         # /like, /favorites
-│   ├── forceplay.js         # /forceplay
-│   ├── lyrics.js            # /lyrics
-│   ├── np.js                # /np, /nowplaying (interactive now-playing UI)
-│   ├── owner.js             # Bot owner utility & evaluation commands
-│   ├── play.js              # /play
-│   ├── playback.js          # /pause, /resume
-│   ├── playlists.js         # Custom playlists (/savelist, /loadlist, /playlists, etc.)
-│   ├── playnext.js          # /playnext
-│   ├── queue.js             # /queue
-│   ├── queueManagement.js   # /shuffle, /clear, /remove, /move, /jump
-│   ├── search.js            # /search
-│   ├── settings.js          # /settings
-│   ├── skip.js              # /skip
-│   ├── stop.js              # /stop
-│   ├── utility.js           # /help, /ping, /stats
-│   └── voteskip.js          # /voteskip
+│   ├── admin.ts             # Server-specific admin commands (/settc, /setvc, /setdjrole, etc.)
+│   ├── advanced.ts          # /seek, /previous, /replay, /radio
+│   ├── favorites.ts         # /like, /favorites
+│   ├── forceplay.ts         # /forceplay
+│   ├── lyrics.ts            # /lyrics
+│   ├── np.ts                # /np, /nowplaying (interactive now-playing UI)
+│   ├── owner.ts             # Bot owner utility & evaluation commands
+│   ├── play.ts              # /play
+│   ├── playback.ts          # /pause, /resume
+│   ├── playlists.ts         # Custom playlists (/savelist, /loadlist, /playlists, etc.)
+│   ├── playnext.ts          # /playnext
+│   ├── queue.ts             # /queue
+│   ├── queueManagement.ts   # /shuffle, /clear, /remove, /move, /jump
+│   ├── search.ts            # /search
+│   ├── settings.ts          # /settings
+│   ├── skip.ts              # /skip
+│   ├── stop.ts              # /stop
+│   ├── utility.ts           # /help, /ping, /stats
+│   └── voteskip.ts          # /voteskip
+├── components/
+│   ├── PlayerControls.ts    # Now Playing interactive button controls
+│   ├── QueuePagination.ts   # Queue pagination controls
+│   └── SearchSelect.ts      # Search result dropdown selection
 ├── services/
-│   ├── DatabaseManager.js   # bun:sqlite (WAL mode) and Cloudflare D1 database controller
-│   ├── MusicManager.js      # Seyfert-compatible native yt-dlp extractor & stream logic
-│   └── serverSettings.js    # Per-server settings with in-memory cache & DB persistence
+│   ├── DatabaseManager.ts   # bun:sqlite (WAL mode) and Cloudflare D1 database controller
+│   ├── MusicManager.ts      # Seyfert-compatible native yt-dlp extractor & stream logic
+│   └── serverSettings.ts    # Per-server settings with in-memory cache & DB persistence
 └── utils/
-    ├── cookies.js           # Netscape / JSON cookie file parser
-    ├── formatters.js        # Duration formatters
-    ├── logger.js            # Console logging module
-    └── permissions.js       # DJ/Owner permission check helpers
+    ├── cookies.ts           # Netscape / JSON cookie file parser
+    ├── formatters.ts        # Duration formatters
+    ├── logger.ts            # Console logging module
+    └── permissions.ts       # DJ/Owner permission check helpers
 data/
 └── playlists/               # Legacy JSON playlists (auto-migrated to DB on startup)
 music_bot.sqlite             # Local SQLite database (favorites, playlists, server settings)
@@ -86,7 +91,7 @@ music_bot.sqlite             # Local SQLite database (favorites, playlists, serv
 
 ### 🐳 Containerized Heroku Deployment (Recommended)
 This repository includes a multi-stage `Dockerfile`, `heroku.yml` manifest, and database abstraction layers for deploying the bot to Heroku via Docker in under 5 minutes.
-For detailed instructions on configuring Cloudflare D1 and deploying to Heroku, please refer to the [Heroku Deployment Guide](file:///d:/Documents/GitHub/Discord-Music-Bot/heroku-deployment-guide.md).
+For detailed instructions on configuring Cloudflare D1 and deploying to Heroku, please refer to the [Heroku Deployment Guide](heroku-deployment-guide.md).
 
 ### Local Installation
 To run the bot locally on your machine:
